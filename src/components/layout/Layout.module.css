@@ -1,0 +1,54 @@
+/* src/components/layout/Layout.module.css */
+.layout { display:flex; min-height:100vh; }
+.desktopSidebar { width:var(--sidebar-w); flex-shrink:0; position:sticky; top:0; height:100vh; }
+.sidebar { width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:18px 12px; }
+
+.brand { display:flex; align-items:center; gap:9px; padding:4px 10px; margin-bottom:24px; }
+.brandIcon { color:var(--accent); }
+.brandName { font-family:var(--font-head); font-size:18px; font-weight:800; letter-spacing:-.4px; }
+
+.nav { display:flex; flex-direction:column; gap:2px; flex:1; }
+.navItem { display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:9px; color:var(--text2); font-size:14px; font-weight:500; transition:var(--transition); }
+.navItem:hover { background:var(--bg3); color:var(--text); }
+.navActive { background:var(--bg3); color:var(--text); font-weight:600; }
+.navAccent { background:var(--accent-bg2); color:var(--accent); font-weight:700; margin-bottom:4px; }
+.navAccent:hover { background:var(--accent-bg); }
+.navAccent.navActive { background:var(--accent-bg); }
+
+.bottom { display:flex; flex-direction:column; gap:6px; padding-top:12px; border-top:1px solid var(--border); margin-top:8px; }
+.controls { display:flex; align-items:center; gap:8px; padding:2px 4px; }
+.themeLabel { font-size:12px; color:var(--text3); font-family:var(--font-ui); }
+.iconBtn { width:30px; height:30px; border-radius:7px; background:var(--bg3); border:1px solid var(--border); color:var(--text2); display:flex; align-items:center; justify-content:center; transition:var(--transition); flex-shrink:0; }
+.iconBtn:hover { color:var(--text); border-color:var(--border2); }
+.langPills { display:flex; gap:3px; margin-left:auto; }
+.langBtn { padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700; color:var(--text3); transition:var(--transition); }
+.langBtn:hover { color:var(--text); }
+.langActive { background:var(--bg3); color:var(--accent); }
+
+.profileRow { display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:9px; transition:var(--transition); }
+.profileRow:hover { background:var(--bg3); }
+.avatar { width:32px; height:32px; border-radius:50%; overflow:hidden; flex-shrink:0; background:var(--bg4); border:2px solid var(--border); display:flex; align-items:center; justify-content:center; }
+.avatarImg { width:100%; height:100%; object-fit:cover; }
+.avatarLetter { font-family:var(--font-head); font-size:14px; font-weight:800; color:var(--accent); }
+.profileInfo { flex:1; overflow:hidden; }
+.profileName { display:block; font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.profileEmail { display:block; font-size:11px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.logoutBtn { display:flex; align-items:center; gap:7px; padding:8px 10px; border-radius:8px; color:var(--text3); font-size:13px; transition:var(--transition); width:100%; }
+.logoutBtn:hover { background:var(--red-bg); color:var(--red); }
+
+.main { flex:1; display:flex; flex-direction:column; min-width:0; }
+.content { flex:1; padding:26px 28px; }
+
+.mobileHeader { display:none; align-items:center; gap:11px; padding:0 16px; height:var(--nav-h); border-bottom:1px solid var(--border); background:var(--bg2); position:sticky; top:0; z-index:50; }
+.menuBtn { color:var(--text2); display:flex; padding:5px; }
+.mobileBrand { flex:1; font-family:var(--font-head); font-size:16px; font-weight:800; color:var(--accent); display:flex; align-items:center; gap:6px; }
+.overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:200; backdrop-filter:blur(3px); }
+.mobileSidebar { width:var(--sidebar-w); height:100%; position:relative; }
+.closeBtn { position:absolute; top:14px; right:10px; z-index:10; color:var(--text3); padding:4px; }
+
+@media(max-width:768px) {
+  .desktopSidebar { display:none; }
+  .mobileHeader { display:flex; }
+  .overlay { display:block; }
+  .content { padding:18px 14px; }
+}
