@@ -38,12 +38,12 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* Hero */}
+      {/* Hero — centered, globe below text */}
       <section className={s.hero}>
-        <div className={s.heroLeft}>
+        <div className={s.heroContent}>
           <div className={s.badge}><span className={s.liveDot}/>{lang==='it'?'12.400+ percorsi creati':'12,400+ routes created'}</div>
           <h1 className={s.heroTitle}>
-            {lang==='it'?<><em>Pianifica</em> il tuo<br/>prossimo road trip.</>:<><em>Plan</em> your next<br/>road trip.</>}
+            {lang==='it'?<><em>Dove ti porta</em><br/>la strada?</>:<><em>Where does</em><br/>the road take you?</>}
           </h1>
           <p className={s.heroDesc}>
             {lang==='it'
@@ -61,13 +61,13 @@ export default function LandingPage() {
             ))}
           </div>
         </div>
-        <div className={s.heroRight}>
-          <div className={s.globeWrap}>
-            <Suspense fallback={<div className={s.globeLoader}><div className={s.spin}/></div>}>
-              <Globe3D darkMode={theme==='dark'}/>
-            </Suspense>
-            <div className={s.globeTag}>{lang==='it'?'Road trip attivi nel mondo':'Active road trips worldwide'}</div>
-          </div>
+
+        {/* Globe — full width, centered */}
+        <div className={s.globeWrap}>
+          <Suspense fallback={<div className={s.globeLoader}><div className={s.spin}/></div>}>
+            <Globe3D darkMode={theme==='dark'}/>
+          </Suspense>
+          <div className={s.globeTag}>{lang==='it'?'🌍 Road trip attivi nel mondo':'🌍 Active road trips worldwide'}</div>
         </div>
       </section>
 

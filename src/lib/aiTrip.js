@@ -1,7 +1,25 @@
 // src/lib/aiTrip.js
-// Claude API — generates real road trip itineraries with documents
+// Chiama il proxy Netlify invece di Claude direttamente
+// (la chiave API sta solo sul server per sicurezza)
 
-const CLAUDE_API = 'https://api.anthropic.com/v1/messages'
+const API_PROXY = '/api/ai-trip'
+
+async function callClaude(prompt, max_tokens = 4000) {
+  const response = await fetch(API_PROXY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, max_tokens }),
+  })
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: response.statusText }))
+    throw new Error(err.error || `HTTP ${response.status}`)
+  }
+
+  const data = await response.json()
+  const text = data.content?.[0]?.text || ''
+  return text
+}
 
 // ── Document requirements by vehicle + country pair ──
 // Visadb.io free endpoint for visa requirements
@@ -256,23 +274,7 @@ Respond ONLY with a valid JSON object (no markdown, no backticks) with this exac
   }
 }`
 
-  const response = await fetch(CLAUDE_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  })
-
-  if (!response.ok) {
-    const err = await response.text()
-    throw new Error(`Claude API error: ${response.status} — ${err}`)
-  }
-
-  const data = await response.json()
-  const text = data.content?.[0]?.text || ''
+  const text = await callClaude(prompt, 4000)
 
   // Strip any accidental markdown
   const clean = text.replace(/```json|```/gi, '').trim()
@@ -297,19 +299,7 @@ Respond ONLY with valid JSON (no markdown):
   "road_note": "parking, road access, or driving note for this stop"
 }`
 
-  const response = await fetch(CLAUDE_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 800,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  })
-
-  if (!response.ok) throw new Error('AI enrichment failed')
-  const data = await response.json()
-  const text = data.content?.[0]?.text || '{}'
+  const text = await callClaude(prompt, 800)
   try {
     return JSON.parse(text.replace(/```json|```/gi, '').trim())
   } catch {
