@@ -1,144 +1,248 @@
-// src/pages/LandingPage.jsx
-import { lazy, Suspense } from 'react'
-import { Link } from 'react-router-dom'
+import { lazy, Suspense, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { Compass, Map, Users, FileText, Download, Sun, Moon, Navigation } from 'lucide-react'
+import { Sun, Moon, Search, ArrowRight, MapPin, FileText, Users, Download, Star, ChevronRight } from 'lucide-react'
 import s from './LandingPage.module.css'
 
 const Globe3D = lazy(() => import('../components/globe/Globe3D'))
 
-const TRIP_TYPES = [
-  { emoji:'🚗', it:'Auto',    en:'Car' },
-  { emoji:'🏍️', it:'Moto',    en:'Motorcycle' },
-  { emoji:'🚴', it:'Bici',    en:'Bicycle' },
-  { emoji:'🥾', it:'A piedi', en:'On foot' },
-  { emoji:'🚐', it:'Camper',  en:'Camper' },
-  { emoji:'⛵', it:'Barca',   en:'Boat' },
+const VEHICLES = [
+  { id:'car',    e:'🚗', it:'Auto',    en:'Car' },
+  { id:'moto',   e:'🏍️', it:'Moto',    en:'Moto' },
+  { id:'bike',   e:'🚴', it:'Bici',    en:'Bike' },
+  { id:'walk',   e:'🥾', it:'A piedi', en:'On foot' },
+  { id:'camper', e:'🚐', it:'Camper',  en:'Camper' },
+  { id:'boat',   e:'⛵', it:'Barca',   en:'Boat' },
 ]
 
-const FEATURES = [
-  { icon:<Navigation size={22}/>, it_t:'Percorsi stradali reali', en_t:'Real road routing',    it_d:'Ogni itinerario calcolato su strade reali via OpenRouteService. Niente linee rette.', en_d:'Every itinerary calculated on real roads via OpenRouteService. No straight lines.' },
-  { icon:<Download size={22}/>,   it_t:'Export GPX',             en_t:'GPX Export',            it_d:'Scarica il percorso GPX per Garmin, Komoot, Wikiloc e qualsiasi app GPS.', en_d:'Download GPX for Garmin, Komoot, Wikiloc and any GPS app.' },
-  { icon:<FileText size={22}/>,   it_t:'Documenti & Visti',      en_t:'Documents & Visas',     it_d:'Link diretti ai portali ufficiali degli stati per visti, assicurazioni e requisiti sanitari.', en_d:'Direct links to official government portals for visas, insurance and health requirements.' },
-  { icon:<Users size={22}/>,      it_t:'Community reale',        en_t:'Real community',        it_d:'Percorsi condivisi da veri viaggiatori con consigli pratici e valutazioni autentiche.', en_d:'Routes shared by real travelers with practical tips and authentic ratings.' },
+const TRIPS = [
+  { title:'Italia → Turchia', sub:'via Balcani', days:22, km:'4.200', rating:4.9, reviews:34, tag:'🏍️ Moto', color:'#E8F5E9' },
+  { title:'Portogallo → Marocco', sub:'via Spagna', days:14, km:'2.800', rating:4.7, reviews:21, tag:'🚗 Auto', color:'#FFF3E0' },
+  { title:'Balcani Loop', sub:'6 paesi', days:18, km:'3.800', rating:4.9, reviews:42, tag:'🏍️ Moto', color:'#E3F2FD' },
+  { title:'Scandinavia', sub:'3 paesi nordici', days:30, km:'6.500', rating:4.6, reviews:18, tag:'🚐 Camper', color:'#F3E5F5' },
 ]
 
 export default function LandingPage() {
   const { lang, changeLang, theme, toggleTheme, t } = useApp()
+  const navigate = useNavigate()
+  const isIt = lang === 'it'
+  const [searchFrom, setSearchFrom] = useState('')
+  const [searchTo,   setSearchTo]   = useState('')
+  const [vehicle,    setVehicle]    = useState('car')
+
+  function handleSearch(e) {
+    e.preventDefault()
+    navigate('/auth')
+  }
 
   return (
     <div className={s.page}>
-      {/* Nav */}
+
+      {/* ── NAV ── */}
       <nav className={s.nav}>
-        <div className={s.logo}><Compass size={20} className={s.logoIcon}/><span>Road-Trip</span></div>
+        <div className={s.logo}>
+          <span className={s.logoIcon}>●</span>
+          <span className={s.logoText}>Road-Trip</span>
+        </div>
+        <div className={s.navCenter}>
+          <Link to="/auth" className={s.navLink}>{isIt ? 'Scopri' : 'Explore'}</Link>
+          <Link to="/auth" className={s.navLink}>{isIt ? 'Community' : 'Community'}</Link>
+          <Link to="/auth" className={s.navLink}>{isIt ? 'Forum' : 'Forum'}</Link>
+        </div>
         <div className={s.navRight}>
-          <button className={s.themeBtn} onClick={toggleTheme}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</button>
-          <Link to="/auth" className={s.loginLink}>{t('nav_login')}</Link>
-          <Link to="/auth" className={s.ctaBtn}>{t('nav_start')} →</Link>
+          <div className={s.langPill}>
+            <button className={[s.langBtn, lang==='it' ? s.langActive : ''].join(' ')} onClick={() => changeLang('it')}>IT</button>
+            <button className={[s.langBtn, lang==='en' ? s.langActive : ''].join(' ')} onClick={() => changeLang('en')}>EN</button>
+          </div>
+          <button className={s.themeBtn} onClick={toggleTheme}>
+            {theme === 'dark' ? <Sun size={14}/> : <Moon size={14}/>}
+          </button>
+          <Link to="/auth" className={s.loginBtn}>{isIt ? 'Accedi' : 'Sign in'}</Link>
+          <Link to="/auth" className={s.ctaBtn}>{isIt ? 'Inizia gratis' : 'Start free'} →</Link>
         </div>
       </nav>
 
-      {/* Hero — centered, globe below text */}
+      {/* ── HERO ── */}
       <section className={s.hero}>
-        <div className={s.heroContent}>
-          <div className={s.badge}><span className={s.liveDot}/>{lang==='it'?'12.400+ percorsi creati':'12,400+ routes created'}</div>
-          <h1 className={s.heroTitle}>
-            {lang==='it'?<><em>Dove ti porta</em><br/>la strada?</>:<><em>Where does</em><br/>the road take you?</>}
+        <div className={s.heroText}>
+          <div className={s.heroBadge}>
+            <span className={s.heroBadgeDot}/>
+            {isIt ? '14.200+ percorsi creati dalla community' : '14,200+ routes created by the community'}
+          </div>
+          <h1 className={s.heroH1}>
+            {isIt ? <>Pianifica il tuo<br/><span>road trip.</span><br/>Tutto in un posto.</> : <>Plan your<br/><span>road trip.</span><br/>All in one place.</>}
           </h1>
           <p className={s.heroDesc}>
-            {lang==='it'
-              ?'Percorsi stradali reali, file GPX per il tuo GPS, checklist visti e documenti. Per auto, moto, bici o a piedi.'
-              :'Real road routes, GPX files for your GPS, visa and document checklists. For car, motorcycle, bicycle or on foot.'
-            }
+            {isIt
+              ? 'Percorso reale su strade, GPX per il tuo GPS, documenti e visti per ogni paese, consigli da chi l\'ha già fatto. Finalmente tutto insieme.'
+              : 'Real road routing, GPX for your GPS, documents and visas for every country, tips from people who\'ve done it. Finally all together.'}
           </p>
-          <div className={s.heroCtas}>
-            <Link to="/auth" className={s.heroBtn}><Compass size={16}/>{lang==='it'?'Inizia gratis':'Start for free'}</Link>
-            <a href="#features" className={s.heroSecond}>{lang==='it'?'Come funziona':'How it works'} ↓</a>
-          </div>
-          <div className={s.typeChips}>
-            {TRIP_TYPES.map(tp=>(
-              <span key={tp.emoji} className={s.chip}>{tp.emoji} {lang==='it'?tp.it:tp.en}</span>
-            ))}
-          </div>
         </div>
 
-        {/* Globe — full width, centered */}
+        {/* Globe */}
         <div className={s.globeWrap}>
-          <Suspense fallback={<div className={s.globeLoader}><div className={s.spin}/></div>}>
-            <Globe3D darkMode={theme==='dark'}/>
+          <Suspense fallback={<div className={s.globeFallback}><div className={s.globeSpin}/></div>}>
+            <Globe3D darkMode={theme === 'dark'}/>
           </Suspense>
-          <div className={s.globeTag}>{lang==='it'?'🌍 Road trip attivi nel mondo':'🌍 Active road trips worldwide'}</div>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className={s.section} id="features">
-        <div className={s.inner}>
-          <div className={s.sectionLabel}>{lang==='it'?'Come funziona':'How it works'}</div>
-          <h2 className={s.sectionTitle}>{lang==='it'?'Due modi di pianificare.':'Two ways to plan.'}</h2>
-          <div className={s.modesGrid}>
-            <ModeCard emoji="🤖"
-              title={lang==='it'?'Modalità Base':'Base Mode'}
-              badge={lang==='it'?'Consigliato':'Recommended'}
-              desc={lang==='it'?'Rispondi a poche domande. L\'AI genera l\'itinerario completo con tappe, notti e checklist documenti.':'Answer a few questions. The AI generates the full itinerary with stops, nights and document checklist.'}
-              items={lang==='it'
-                ?['Itinerario generato automaticamente','Checklist visti e documenti','Consigli pratici per ogni tappa','Stima distanza e budget']
-                :['Auto-generated itinerary','Visa and document checklist','Practical tips per stop','Distance and budget estimate']}
-            />
-            <ModeCard emoji="🗺️" accent
-              title={lang==='it'?'Modalità Expert':'Expert Mode'}
-              badge={lang==='it'?'Controllo totale':'Full control'}
-              desc={lang==='it'?'Clicca sulla mappa per aggiungere tappe. Trascina per riordinare. Calcola il percorso reale e scarica il GPX.':'Click the map to add stops. Drag to reorder. Calculate the real road route and download the GPX.'}
-              items={lang==='it'
-                ?['Mappa interattiva Komoot-style','Routing stradale reale (ORS)','Drag & drop per riordinare','Export GPX + stampa PDF']
-                :['Komoot-style interactive map','Real road routing (ORS)','Drag & drop to reorder','GPX export + PDF print']}
-            />
+          <div className={s.globeCounter}>
+            <span className={s.globeCounterDot}/>
+            <div>
+              <strong>1.240</strong>
+              <span>{isIt ? 'viaggi attivi ora' : 'active trips now'}</span>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Features */}
+      {/* ── SEARCH BAR ── */}
+      <section className={s.searchSection}>
+        <form className={s.searchBox} onSubmit={handleSearch}>
+          <div className={s.searchField}>
+            <label className={s.searchLabel}><MapPin size={12}/> {isIt ? 'Partenza' : 'From'}</label>
+            <input
+              className={s.searchInput}
+              value={searchFrom}
+              onChange={e => setSearchFrom(e.target.value)}
+              placeholder={isIt ? 'es. Milano, Italia' : 'e.g. Milan, Italy'}
+            />
+          </div>
+          <div className={s.searchDivider}/>
+          <div className={s.searchField}>
+            <label className={s.searchLabel}><MapPin size={12}/> {isIt ? 'Destinazione' : 'To'}</label>
+            <input
+              className={s.searchInput}
+              value={searchTo}
+              onChange={e => setSearchTo(e.target.value)}
+              placeholder={isIt ? 'es. Istanbul, Turchia' : 'e.g. Istanbul, Turkey'}
+            />
+          </div>
+          <div className={s.searchDivider}/>
+          <div className={s.searchField}>
+            <label className={s.searchLabel}>{isIt ? 'Mezzo' : 'Vehicle'}</label>
+            <div className={s.vehicleMini}>
+              {VEHICLES.map(v => (
+                <button key={v.id} type="button"
+                  className={[s.vBtn, vehicle===v.id ? s.vBtnActive : ''].join(' ')}
+                  onClick={() => setVehicle(v.id)}
+                  title={isIt ? v.it : v.en}>
+                  {v.e}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button type="submit" className={s.searchBtn}>
+            <Search size={16}/>
+            {isIt ? 'Cerca' : 'Search'}
+          </button>
+        </form>
+      </section>
+
+      {/* ── STATS ── */}
+      <section className={s.statsSection}>
+        {[
+          { n:'14.200+', l: isIt ? 'Itinerari creati' : 'Itineraries created' },
+          { n:'50+',     l: isIt ? 'Paesi coperti' : 'Countries covered' },
+          { n:'7.000',   l: isIt ? 'Punti GPX per file' : 'GPX points per file' },
+          { n:'100%',    l: isIt ? 'Info da fonti ufficiali' : 'Info from official sources' },
+        ].map((st, i) => (
+          <div key={i} className={s.statItem}>
+            <div className={s.statN}>{st.n}</div>
+            <div className={s.statL}>{st.l}</div>
+          </div>
+        ))}
+      </section>
+
+      {/* ── WHAT IT DOES ── */}
       <section className={s.featSection}>
-        <div className={s.inner}>
+        <div className={s.featInner}>
+          <div className={s.sectionLabel}>{isIt ? 'Perché Road-Trip' : 'Why Road-Trip'}</div>
+          <h2 className={s.sectionTitle}>
+            {isIt ? 'Smetti di girare 10 siti diversi.' : 'Stop using 10 different sites.'}
+          </h2>
+          <p className={s.sectionDesc}>
+            {isIt
+              ? 'Visti, documenti, assicurazioni, percorso, GPX, consigli di chi l\'ha già fatto. Tutto automatico, tutto nel tuo viaggio.'
+              : 'Visas, documents, insurance, routing, GPX, tips from people who\'ve done it. All automatic, all in your trip.'}
+          </p>
           <div className={s.featGrid}>
-            {FEATURES.map((f,i)=>(
+            {[
+              { icon:<MapPin size={20}/>, color:'#E8F5E9', iconColor:'#2E7D32',
+                it:'Percorso reale', en:'Real road routing',
+                dit:'Calcolo su strade reali via OpenRouteService. Nessuna linea retta.', den:'Calculated on real roads via OpenRouteService. No straight lines.' },
+              { icon:<FileText size={20}/>, color:'#FFF3E0', iconColor:'#E65100',
+                it:'Documenti automatici', en:'Automatic documents',
+                dit:'Visti, carta verde, carnet, vaccini — in base al tuo veicolo e ai paesi attraversati.', den:'Visas, green card, carnet, vaccines — based on your vehicle and countries.' },
+              { icon:<Download size={20}/>, color:'#E3F2FD', iconColor:'#1565C0',
+                it:'GPX alta precisione', en:'High-precision GPX',
+                dit:'7.000 punti GPS per un tracciato perfetto su Garmin, Komoot, Wikiloc.', den:'7,000 GPS points for a perfect track on Garmin, Komoot, Wikiloc.' },
+              { icon:<Users size={20}/>, color:'#F3E5F5', iconColor:'#6A1B9A',
+                it:'Community reale', en:'Real community',
+                dit:'Itinerari condivisi da veri viaggiatori. Prendi quello che ti serve, modificalo per te.', den:'Itineraries shared by real travelers. Take what you need, customize for yourself.' },
+            ].map((f, i) => (
               <div key={i} className={s.featCard}>
-                <div className={s.featIcon}>{f.icon}</div>
-                <h3>{lang==='it'?f.it_t:f.en_t}</h3>
-                <p>{lang==='it'?f.it_d:f.en_d}</p>
+                <div className={s.featIcon} style={{ background: f.color }}>
+                  <span style={{ color: f.iconColor }}>{f.icon}</span>
+                </div>
+                <h3 className={s.featTitle}>{isIt ? f.it : f.en}</h3>
+                <p className={s.featDesc}>{isIt ? f.dit : f.den}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className={s.ctaSection}>
-        <h2>{lang==='it'?'Pronto a partire?':'Ready to hit the road?'}</h2>
-        <p>{lang==='it'?'Gratuito, nessuna carta di credito.':'Free, no credit card required.'}</p>
-        <Link to="/auth" className={s.heroBtn} style={{display:'inline-flex'}}><Compass size={16}/>{lang==='it'?'Crea il tuo account':'Create your account'}</Link>
+      {/* ── POPULAR TRIPS ── */}
+      <section className={s.tripsSection}>
+        <div className={s.featInner}>
+          <div className={s.sectionLabel}>{isIt ? 'Dalla community' : 'From the community'}</div>
+          <div className={s.tripsSectionHead}>
+            <h2 className={s.sectionTitle} style={{margin:0}}>{isIt ? 'Itinerari più popolari' : 'Most popular itineraries'}</h2>
+            <Link to="/auth" className={s.seeAll}>{isIt ? 'Vedi tutti' : 'See all'} <ChevronRight size={14}/></Link>
+          </div>
+          <div className={s.tripsGrid}>
+            {TRIPS.map((trip, i) => (
+              <Link to="/auth" key={i} className={s.tripCard}>
+                <div className={s.tripCardImg} style={{ background: trip.color }}>
+                  <span className={s.tripCardEmoji}>{trip.tag.split(' ')[0]}</span>
+                  <span className={s.tripCardTag}>{trip.tag}</span>
+                </div>
+                <div className={s.tripCardBody}>
+                  <div className={s.tripCardTitle}>{trip.title}</div>
+                  <div className={s.tripCardSub}>{trip.sub}</div>
+                  <div className={s.tripCardMeta}>
+                    <span>{trip.days} {isIt ? 'giorni' : 'days'} · {trip.km} km</span>
+                    <span className={s.tripCardRating}>
+                      <Star size={11} fill="currentColor"/> {trip.rating} ({trip.reviews})
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
       </section>
 
-      {/* Footer */}
-      <footer className={s.footer}>
-        <span className={s.footLogo}><Compass size={15}/> Road-Trip</span>
-        <span className={s.footMade}>{lang==='it'?'Fatto con ❤️ per i viaggiatori':'Made with ❤️ for adventurers'}</span>
-        <span className={s.footHint}>{lang==='it'?'Lingua nelle impostazioni →':'Language in settings →'}</span>
-      </footer>
-    </div>
-  )
-}
+      {/* ── CTA ── */}
+      <section className={s.ctaSection}>
+        <div className={s.ctaInner}>
+          <h2 className={s.ctaTitle}>{isIt ? 'Pronto a partire?' : 'Ready to hit the road?'}</h2>
+          <p className={s.ctaDesc}>{isIt ? 'Gratis. Nessuna carta di credito.' : 'Free. No credit card required.'}</p>
+          <Link to="/auth" className={s.ctaBtn2}>
+            {isIt ? 'Crea il tuo account' : 'Create your account'} <ArrowRight size={15}/>
+          </Link>
+        </div>
+      </section>
 
-function ModeCard({ emoji, title, badge, desc, items, accent }) {
-  return (
-    <div className={[s.modeCard, accent?s.modeAccent:''].join(' ')}>
-      <div className={s.modeTop}>
-        <span className={s.modeEmoji}>{emoji}</span>
-        <span className={[s.modeBadge, accent?s.modeBadgeAccent:''].join(' ')}>{badge}</span>
-      </div>
-      <h3 className={s.modeTitle}>{title}</h3>
-      <p className={s.modeDesc}>{desc}</p>
-      <ul className={s.modeList}>{items.map((it,i)=><li key={i}><span className={s.check}>✓</span>{it}</li>)}</ul>
+      {/* ── FOOTER ── */}
+      <footer className={s.footer}>
+        <span className={s.footerLogo}>● Road-Trip</span>
+        <span className={s.footerMade}>{isIt ? 'Fatto con ❤️ per i viaggiatori' : 'Made with ❤️ for road travelers'}</span>
+        <div className={s.footerLang}>
+          <button className={[s.langBtn, lang==='it' ? s.langActive : ''].join(' ')} onClick={() => changeLang('it')}>IT</button>
+          <button className={[s.langBtn, lang==='en' ? s.langActive : ''].join(' ')} onClick={() => changeLang('en')}>EN</button>
+        </div>
+      </footer>
+
     </div>
   )
 }

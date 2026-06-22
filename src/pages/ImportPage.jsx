@@ -1,118 +1,199 @@
-// src/pages/ImportPage.jsx
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { useNavigate } from 'react-router-dom'
-import { collection, addDoc, serverTimestamp, doc, updateDoc, increment, arrayUnion } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import { Upload, Plus, Trash2, Star } from 'lucide-react'
-import GeoInput from '../components/ui/GeoInput'
+import { Upload, Plus, Trash2, MapPin, Star } from 'lucide-react'
 import toast from 'react-hot-toast'
 import s from './ImportPage.module.css'
 
-const TRANSPORTS = {
-  it:['Auto','Moto','Bici','A piedi','Camper','Barca','Misto'],
-  en:['Car','Motorcycle','Bicycle','On foot','Camper','Boat','Mixed'],
-}
+const VEHICLE_TYPES = [
+  { id:'car', e:'🚗', it:'Auto', en:'Car' },
+  { id:'moto', e:'🏍️', it:'Moto', en:'Moto' },
+  { id:'bike', e:'🚴', it:'Bici', en:'Bike' },
+  { id:'walk', e:'🥾', it:'A piedi', en:'On foot' },
+  { id:'camper', e:'🚐', it:'Camper', en:'Camper' },
+  { id:'boat', e:'⛵', it:'Barca', en:'Boat' },
+]
 
 export default function ImportPage() {
   const { user, t, lang } = useApp()
   const navigate = useNavigate()
-  const [saving, setSaving] = useState(false)
+  const isIt = lang === 'it'
+
   const [form, setForm] = useState({
-    title:'', from:'', to:'', year:new Date().getFullYear(),
-    duration:'', transport:'', totalKm:'', rating:5,
-    highlights:'', tips:'', wouldRepeat:true, isPublic:true,
-    stops:[{ city:'', country:'', highlights:'' }],
+    title: '', vehicle: 'car', year: new Date().getFullYear(),
+    from: '', to: '', days: '', km: '', rating: 5,
+    notes: '', tips: '', highlights: '',
   })
+  const [stops, setStops] = useState([{ city:'', country:'', nights:1, id:'s0' }])
+  const [saving, setSaving] = useState(false)
 
-  const set = (k,v) => setForm(p=>({...p,[k]:v}))
-  const addStop = () => setForm(p=>({...p,stops:[...p.stops,{city:'',country:'',highlights:''}]}))
-  const removeStop = i => setForm(p=>({...p,stops:p.stops.filter((_,j)=>j!==i)}))
-  const updStop = (i,k,v) => setForm(p=>({...p,stops:p.stops.map((s,j)=>j===i?{...s,[k]:v}:s)}))
+  function addStop() {
+    setStops(prev => [...prev, { city:'', country:'', nights:1, id:`s${Date.now()}` }])
+  }
+  function removeStop(id) { setStops(prev => prev.filter(s => s.id !== id)) }
+  function updateStop(id, k, v) { setStops(prev => prev.map(s => s.id===id ? {...s,[k]:v} : s)) }
 
-  async function save() {
-    if (!form.title||!form.from||!form.to) { toast.error(lang==='it'?'Compila i campi obbligatori':'Fill in required fields'); return }
+  async function handleSave() {
+    if (!form.title || stops.length === 0) {
+      toast.error(isIt ? 'Titolo e almeno una tappa richiesti.' : 'Title and at least one stop required.')
+      return
+    }
     setSaving(true)
     try {
-      const countries = [...new Set(form.stops.map(s=>s.country).filter(Boolean))]
-      await addDoc(collection(db,'trips'), { ...form, countries, isPast:true, type:'imported', status:'completed', tripType:form.transport.toLowerCase()||'car', userId:user.uid, createdAt:serverTimestamp() })
-      await updateDoc(doc(db,'users',user.uid), { tripsCompleted:increment(1), totalKm:increment(Number(form.totalKm)||0), countriesVisited:arrayUnion(...countries) })
-      toast.success(lang==='it'?'Viaggio importato! 🎉':'Trip imported! 🎉')
+      const data = {
+        type: 'imported', tripType: form.vehicle,
+        title: form.title,
+        from: form.from || stops[0]?.city || '',
+        to:   form.to   || stops[stops.length-1]?.city || '',
+        total_km: parseInt(form.km) || 0,
+        days: parseInt(form.days) || 0,
+        year: parseInt(form.year),
+        rating: form.rating,
+        notes: form.notes,
+        tips: form.tips,
+        highlights: form.highlights.split(',').map(h => h.trim()).filter(Boolean),
+        stops: stops.map(({ id:_, ...rest }) => rest),
+        status: 'completed', isPast: true, isPublic: false,
+        userId: user.uid, createdAt: serverTimestamp(),
+      }
+      await addDoc(collection(db,'trips'), data)
+      await updateDoc(doc(db,'users',user.uid), {
+        tripsCreated: increment(1),
+        tripsCompleted: increment(1),
+        totalKm: increment(parseInt(form.km)||0),
+      })
+      toast.success(isIt ? 'Viaggio importato! ✅' : 'Trip imported! ✅')
       navigate('/my-trips')
-    } catch(err) { console.error(err); toast.error('Error') }
+    } catch (err) { console.error(err); toast.error('Import failed') }
     finally { setSaving(false) }
   }
 
   return (
     <div className={s.page}>
-      <h1 className={s.title}>{t('imp_title')}</h1>
-      <p className={s.subtitle}>{t('imp_subtitle')}</p>
-      <div className={s.banner}><Upload size={17}/> <span>{t('imp_banner')}</span></div>
-
-      <div className={s.card}>
-        <h2 className={s.cardTitle}>{lang==='it'?'Informazioni viaggio':'Trip info'}</h2>
-        <div className={s.fields}>
-          <div className={s.field}><label className={s.label}>{t('imp_tripname')} *</label><input className={s.input} value={form.title} onChange={e=>set('title',e.target.value)} placeholder={lang==='it'?'es. Trans-Siberia 2023':'e.g. Trans-Siberia 2023'} /></div>
-          <div className={s.fieldRow}>
-            <GeoInput label={`${lang==='it'?'Da':'From'} *`} value={form.from} onChange={v=>set('from',v)} onSelect={r=>set('from',r.short)} placeholder={lang==='it'?'Partenza':'Departure'} />
-            <span className={s.arrow}>→</span>
-            <GeoInput label={`${lang==='it'?'A':'To'} *`} value={form.to} onChange={v=>set('to',v)} onSelect={r=>set('to',r.short)} placeholder={lang==='it'?'Destinazione':'Destination'} />
-          </div>
-          <div className={s.fieldRow3}>
-            <div className={s.field}><label className={s.label}>{t('imp_year')}</label><input className={s.input} type="number" min={1980} max={2025} value={form.year} onChange={e=>set('year',e.target.value)} /></div>
-            <div className={s.field}><label className={s.label}>{t('imp_duration')}</label><input className={s.input} type="number" min={1} value={form.duration} onChange={e=>set('duration',e.target.value)} placeholder="30" /></div>
-            <div className={s.field}><label className={s.label}>{t('imp_km')}</label><input className={s.input} type="number" min={0} value={form.totalKm} onChange={e=>set('totalKm',e.target.value)} placeholder="5000" /></div>
-          </div>
-          <div className={s.field}><label className={s.label}>{lang==='it'?'Mezzo':'Transport'}</label>
-            <select className={s.select} value={form.transport} onChange={e=>set('transport',e.target.value)}>
-              <option value="">{lang==='it'?'Seleziona…':'Select…'}</option>
-              {TRANSPORTS[lang].map(t=><option key={t}>{t}</option>)}
-            </select>
-          </div>
+      <div className={s.header}>
+        <div>
+          <h1 className={s.title}>{t('nav_import')}</h1>
+          <p className={s.sub}>{isIt ? 'Aggiungi un viaggio già fatto per arricchire il tuo profilo e aiutare la community.' : 'Add a past trip to enrich your profile and help the community.'}</p>
         </div>
       </div>
 
-      <div className={s.card}>
-        <h2 className={s.cardTitle}>{lang==='it'?'Tappe e paesi':'Stops & countries'}</h2>
-        <div className={s.stopsList}>
-          {form.stops.map((stop,i)=>(
-            <div key={i} className={s.stopCard}>
-              <div className={s.stopHead}><span className={s.stopLabel}>Stop {i+1}</span>{form.stops.length>1&&<button className={s.removeBtn} onClick={()=>removeStop(i)}><Trash2 size={13}/></button>}</div>
-              <div className={s.fieldRow}>
-                <div className={s.field}><label className={s.label}>{lang==='it'?'Città':'City'}</label><input className={s.input} value={stop.city} onChange={e=>updStop(i,'city',e.target.value)} placeholder={lang==='it'?'Città':'City'} /></div>
-                <div className={s.field}><label className={s.label}>{lang==='it'?'Paese':'Country'}</label><input className={s.input} value={stop.country} onChange={e=>updStop(i,'country',e.target.value)} placeholder={lang==='it'?'Paese':'Country'} /></div>
+      <div className={s.grid}>
+        {/* Main form */}
+        <div className={s.formCard}>
+          <h2 className={s.cardTitle}>{isIt ? 'Dettagli del viaggio' : 'Trip details'}</h2>
+
+          <div className={s.field}>
+            <label className="field-label">{isIt ? 'Titolo del viaggio' : 'Trip title'} *</label>
+            <input className="field-input" value={form.title} onChange={e => setForm(f=>({...f,title:e.target.value}))} placeholder={isIt?'es. Italia → Marocco 2023':'e.g. Italy → Morocco 2023'}/>
+          </div>
+
+          <div className={s.row3}>
+            <div className={s.field}>
+              <label className="field-label">{isIt?'Partenza':'Departure'}</label>
+              <input className="field-input" value={form.from} onChange={e => setForm(f=>({...f,from:e.target.value}))} placeholder="Milano"/>
+            </div>
+            <div className={s.field}>
+              <label className="field-label">{isIt?'Destinazione':'Destination'}</label>
+              <input className="field-input" value={form.to} onChange={e => setForm(f=>({...f,to:e.target.value}))} placeholder="Marrakech"/>
+            </div>
+            <div className={s.field}>
+              <label className="field-label">{isIt?'Anno':'Year'}</label>
+              <input className="field-input" type="number" min={1990} max={2030} value={form.year} onChange={e => setForm(f=>({...f,year:e.target.value}))}/>
+            </div>
+          </div>
+
+          <div className={s.row2}>
+            <div className={s.field}>
+              <label className="field-label">{isIt?'Giorni totali':'Total days'}</label>
+              <input className="field-input" type="number" min={1} value={form.days} onChange={e => setForm(f=>({...f,days:e.target.value}))} placeholder="14"/>
+            </div>
+            <div className={s.field}>
+              <label className="field-label">{isIt?'Km totali':'Total km'}</label>
+              <input className="field-input" type="number" min={0} value={form.km} onChange={e => setForm(f=>({...f,km:e.target.value}))} placeholder="3500"/>
+            </div>
+          </div>
+
+          {/* Vehicle */}
+          <div className={s.field}>
+            <label className="field-label">{t('build_vehicle')}</label>
+            <div className={s.typeGrid}>
+              {VEHICLE_TYPES.map(tp => (
+                <button key={tp.id} type="button"
+                  className={[s.typeBtn, form.vehicle===tp.id ? s.typeBtnActive : ''].join(' ')}
+                  onClick={() => setForm(f=>({...f,vehicle:tp.id}))}>
+                  <span>{tp.e}</span><span>{isIt?tp.it:tp.en}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Rating */}
+          <div className={s.field}>
+            <label className="field-label">{isIt?'La tua valutazione':'Your rating'}</label>
+            <div className={s.stars}>
+              {[1,2,3,4,5].map(n => (
+                <button key={n} type="button" onClick={() => setForm(f=>({...f,rating:n}))}>
+                  <Star size={22} fill={n <= form.rating ? '#C49010' : 'none'} color={n <= form.rating ? '#C49010' : 'var(--border3)'}/>
+                </button>
+              ))}
+              <span className={s.ratingLabel}>{form.rating}/5</span>
+            </div>
+          </div>
+
+          {/* Notes & Tips */}
+          <div className={s.field}>
+            <label className="field-label">{isIt?'Note generali':'General notes'}</label>
+            <textarea className="field-input" rows={3} value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} placeholder={isIt?'Com\'è stato il viaggio? Cosa hai scoperto?':'How was the trip? What did you discover?'}/>
+          </div>
+          <div className={s.field}>
+            <label className="field-label">{isIt?'Consigli per altri':'Tips for others'}</label>
+            <textarea className="field-input" rows={3} value={form.tips} onChange={e => setForm(f=>({...f,tips:e.target.value}))} placeholder={isIt?'Consigli pratici che vorresti avere saputo prima…':'Practical tips you wish you\'d known beforehand…'}/>
+          </div>
+          <div className={s.field}>
+            <label className="field-label">{isIt?'Momenti clou (separati da virgola)':'Highlights (comma-separated)'}</label>
+            <input className="field-input" value={form.highlights} onChange={e => setForm(f=>({...f,highlights:e.target.value}))} placeholder={isIt?'Tramonto Cappadocia, Medina di Fes, Deserto Merzouga':'Cappadocia sunset, Fes Medina, Merzouga Desert'}/>
+          </div>
+        </div>
+
+        {/* Stops */}
+        <div className={s.stopsCard}>
+          <h2 className={s.cardTitle}>{isIt?'Tappe del viaggio':'Trip stops'}</h2>
+          <p className={s.stopsSub}>{isIt?'Aggiungi le città principali che hai visitato.':'Add the main cities you visited.'}</p>
+
+          {stops.map((stop, i) => (
+            <div key={stop.id} className={s.stopRow}>
+              <div className={s.stopNum}>{i+1}</div>
+              <div className={s.stopFields}>
+                <div className={s.stopInputRow}>
+                  <input className="field-input" value={stop.city} onChange={e => updateStop(stop.id,'city',e.target.value)} placeholder={isIt?'Città':'City'}/>
+                  <input className="field-input" value={stop.country} onChange={e => updateStop(stop.id,'country',e.target.value)} placeholder={isIt?'Paese':'Country'}/>
+                  <input type="number" className={[s.nightsInput, 'field-input'].join(' ')} value={stop.nights} min={0} max={99} onChange={e => updateStop(stop.id,'nights',parseInt(e.target.value)||1)}/>
+                  <span className={s.nightsLbl}>{isIt?'n':'n'}</span>
+                </div>
               </div>
-              <div className={s.field}><label className={s.label}>{lang==='it'?'Cosa c\'era di speciale?':'What was special?'}</label><input className={s.input} value={stop.highlights} onChange={e=>updStop(i,'highlights',e.target.value)} placeholder={lang==='it'?'es. Vista mozzafiato sul lago...':'e.g. Stunning lake views...'} /></div>
+              {stops.length > 1 && (
+                <button className={s.removeBtn} onClick={() => removeStop(stop.id)}><Trash2 size={13}/></button>
+              )}
             </div>
           ))}
-          <button className={s.addBtn} onClick={addStop}><Plus size={14}/> {lang==='it'?'Aggiungi tappa':'Add stop'}</button>
+
+          <button className={s.addStopBtn} onClick={addStop}>
+            <Plus size={14}/> {isIt?'Aggiungi tappa':'Add stop'}
+          </button>
         </div>
       </div>
 
-      <div className={s.card}>
-        <h2 className={s.cardTitle}>{lang==='it'?'La tua recensione':'Your review'}</h2>
-        <div className={s.fields}>
-          <div className={s.field}>
-            <label className={s.label}>{t('rating')}</label>
-            <div className={s.stars}>{[1,2,3,4,5].map(n=>(
-              <button key={n} onClick={()=>set('rating',n)} style={{padding:3}}>
-                <Star size={22} fill={form.rating>=n?'var(--yellow)':'none'} color={form.rating>=n?'var(--yellow)':'var(--text3)'}/>
-              </button>
-            ))}<span className={s.ratingLbl}>{form.rating}/5</span></div>
-          </div>
-          <div className={s.field}><label className={s.label}>{t('imp_highlights')}</label><textarea className={s.textarea} rows={3} value={form.highlights} onChange={e=>set('highlights',e.target.value)} placeholder={lang==='it'?'I momenti migliori del viaggio?':'Best moments of the trip?'}/></div>
-          <div className={s.field}><label className={s.label}>{t('imp_tips')}</label><textarea className={s.textarea} rows={3} value={form.tips} onChange={e=>set('tips',e.target.value)} placeholder={lang==='it'?'Cosa devono sapere gli altri viaggiatori?':'What should others know?'}/></div>
-          <div className={s.checkRow}>
-            <label className={s.checkLabel}><input type="checkbox" checked={form.wouldRepeat} onChange={e=>set('wouldRepeat',e.target.checked)}/> {t('imp_repeat')}</label>
-            <label className={s.checkLabel}><input type="checkbox" checked={form.isPublic} onChange={e=>set('isPublic',e.target.checked)}/> {t('imp_share')}</label>
-          </div>
-        </div>
-      </div>
-
-      <div className={s.actions}>
-        <button className={s.saveBtn} onClick={save} disabled={saving}>
-          {saving?`${lang==='it'?'Importando…':'Importing…'}`:<><Upload size={16}/> {t('imp_save')}</>}
+      {/* Save */}
+      <div className={s.saveRow}>
+        <button className={s.saveBtn} onClick={handleSave} disabled={saving}>
+          {saving
+            ? (isIt?'Salvataggio…':'Saving…')
+            : <><Upload size={15}/> {isIt?'Importa viaggio':'Import trip'}</>
+          }
         </button>
+        <p className={s.saveNote}>{isIt?'Il viaggio verrà salvato come "completato" nel tuo profilo.':'The trip will be saved as "completed" in your profile.'}</p>
       </div>
     </div>
   )

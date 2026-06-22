@@ -1,74 +1,92 @@
-// src/pages/MyTripsPage.jsx
-import { useState, useEffect } from 'react'
-import { useApp } from '../context/AppContext'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore'
+import { useApp } from '../context/AppContext'
+import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import { Plus, Map, Clock, Globe, Upload } from 'lucide-react'
+import { Map, Plus, Trash2, Download, Clock, Route as RouteIcon } from 'lucide-react'
+import { buildGPX, downloadGPX } from '../lib/routing'
+import toast from 'react-hot-toast'
 import s from './MyTripsPage.module.css'
 
-const TYPE_EMOJI = { car:'🚗', moto:'🏍️', bike:'🚴', walk:'🥾', camper:'🚐', boat:'⛵', mixed:'🔀' }
+const VEHICLE_EMOJI = { car:'🚗', moto:'🏍️', bike:'🚴', walk:'🥾', camper:'🚐', boat:'⛵' }
 
 export default function MyTripsPage() {
   const { user, t, lang } = useApp()
-  const [trips, setTrips]   = useState([])
+  const isIt = lang === 'it'
+  const [trips, setTrips] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!user) return
-    const q = query(collection(db,'trips'), where('userId','==',user.uid), orderBy('createdAt','desc'))
-    getDocs(q).then(s => { setTrips(s.docs.map(d=>({id:d.id,...d.data()}))); setLoading(false) }).catch(()=>setLoading(false))
+    getDocs(query(collection(db,'trips'), where('userId','==',user.uid), orderBy('createdAt','desc')))
+      .then(snap => setTrips(snap.docs.map(d => ({ id:d.id, ...d.data() }))))
+      .finally(() => setLoading(false))
   }, [user])
+
+  async function handleDelete(id) {
+    if (!confirm(isIt ? 'Eliminare questo viaggio?' : 'Delete this trip?')) return
+    await deleteDoc(doc(db,'trips',id))
+    setTrips(prev => prev.filter(t => t.id !== id))
+    toast.success(isIt ? 'Viaggio eliminato.' : 'Trip deleted.')
+  }
+
+  function handleGPX(trip) {
+    if (!trip.stops?.length) { toast.error(isIt?'Nessuna tappa':'No stops'); return }
+    const geo = trip.stops.map(s => [s.lng||0, s.lat||0])
+    const gpx = buildGPX(trip.title, trip.stops.map(s=>({name:s.city||s.name, lat:s.lat, lng:s.lng, nights:s.nights})), geo, 7000)
+    downloadGPX(trip.title || 'trip', gpx)
+    toast.success(isIt ? 'GPX scaricato (~7000 punti)' : 'GPX downloaded (~7000 points)')
+  }
+
+  if (loading) return <div className={s.loader}><div className={s.spin}/></div>
 
   return (
     <div className={s.page}>
       <div className={s.header}>
-        <div>
-          <h1 className={s.title}>{t('nav_mytrips')}</h1>
-          <p className={s.sub}>{trips.length} {lang==='it'?'viaggio/i salvato/i':'trip(s) saved'}</p>
-        </div>
-        <div className={s.hActions}>
-          <Link to="/import" className={s.secBtn}><Upload size={14}/> {t('nav_import')}</Link>
-          <Link to="/build"  className={s.primBtn}><Plus size={14}/> {lang==='it'?'Nuovo':'New'}</Link>
-        </div>
+        <h1 className={s.title}>{t('nav_mytrips')}</h1>
+        <Link to="/build" className={s.newBtn}><Plus size={14}/> {t('dash_newtrip')}</Link>
       </div>
 
-      {loading ? (
-        <div className={s.grid}>{[1,2,3].map(i=><div key={i} className={`${s.card} skeleton`} style={{height:180}}/>)}</div>
-      ) : trips.length === 0 ? (
+      {trips.length === 0 ? (
         <div className={s.empty}>
-          <span style={{fontSize:48}}>🗺️</span>
-          <h2>{lang==='it'?'Nessun viaggio ancora':'No trips yet'}</h2>
-          <p>{lang==='it'?'Inizia a pianificare o importa un viaggio passato.':'Start planning or import a past trip.'}</p>
-          <div className={s.hActions}>
-            <Link to="/build"  className={s.primBtn}><Plus size={14}/> {lang==='it'?'Pianifica':'Plan'}</Link>
-            <Link to="/import" className={s.secBtn}><Upload size={14}/> {lang==='it'?'Importa':'Import'}</Link>
-          </div>
+          <Map size={36}/>
+          <p>{isIt ? 'Nessun viaggio ancora.' : 'No trips yet.'}</p>
+          <Link to="/build" className={s.emptyBtn}><Plus size={13}/> {t('dash_newtrip')}</Link>
         </div>
       ) : (
-        <div className={s.grid}>
+        <div className={s.list}>
           {trips.map(trip => (
-            <Link to={`/my-trips/${trip.id}`} key={trip.id} className={s.card}>
-              <div className={s.cardTop}>
-                <span className={s.tripEmoji}>{TYPE_EMOJI[trip.tripType]||'🗺️'}</span>
-                <div className={s.badges}>
-                  <span className={s.typeBadge}>{trip.isPast?(lang==='it'?'Passato':'Past'):(lang==='it'?'In piano':'Planning')}</span>
-                  <span className={s.typeBadge} style={{background:'var(--accent-bg)',color:'var(--accent)'}}>{trip.type==='expert'?'Expert':'Base'}</span>
+            <div key={trip.id} className={s.row}>
+              <Link to={`/my-trips/${trip.id}`} className={s.rowLink}>
+                <div className={s.rowIcon}>{VEHICLE_EMOJI[trip.tripType] || '🗺️'}</div>
+                <div className={s.rowInfo}>
+                  <div className={s.rowTitle}>{trip.title}</div>
+                  <div className={s.rowMeta}>
+                    {trip.stops?.length || 0} {isIt?'tappe':'stops'}
+                    {trip.total_km ? ` · ${trip.total_km.toLocaleString()} km` : ''}
+                    {trip.createdAt && ` · ${formatDate(trip.createdAt, lang)}`}
+                  </div>
+                  {trip.tagline && <div className={s.rowTagline}>{trip.tagline}</div>}
                 </div>
+              </Link>
+              <div className={s.rowActions}>
+                <button className={s.actionBtn} onClick={() => handleGPX(trip)} title="Download GPX">
+                  <Download size={14}/>
+                </button>
+                <button className={[s.actionBtn, s.deleteBtn].join(' ')} onClick={() => handleDelete(trip.id)} title="Delete">
+                  <Trash2 size={14}/>
+                </button>
               </div>
-              <h2 className={s.cardTitle}>{trip.title || `${trip.from} → ${trip.to}`}</h2>
-              <div className={s.cardMeta}>
-                {trip.days && <span><Clock size={11}/> {trip.days} {t('days')}</span>}
-                {trip.stops?.length>0 && <span><Map size={11}/> {trip.stops.length} {t('stops')}</span>}
-              </div>
-              <div className={s.cardFooter}>
-                <span className={s.status} data-status={trip.status}>{trip.status}</span>
-                <span>→</span>
-              </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
     </div>
   )
+}
+
+function formatDate(ts, lang) {
+  if (!ts) return ''
+  const d = ts.toDate ? ts.toDate() : new Date(ts)
+  return d.toLocaleDateString(lang==='it'?'it-IT':'en-GB', { day:'2-digit', month:'short', year:'numeric' })
 }

@@ -1,18 +1,17 @@
-// src/pages/AuthPage.jsx
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { useNavigate } from 'react-router-dom'
-import { Compass, Sun, Moon } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+import { Compass, Sun, Moon, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import s from './AuthPage.module.css'
 
 const ERR = {
-  'auth/user-not-found':       { it:'Nessun account con questa email', en:'No account with this email' },
-  'auth/wrong-password':       { it:'Password errata',                 en:'Wrong password' },
-  'auth/email-already-in-use': { it:'Email già in uso',                en:'Email already in use' },
-  'auth/weak-password':        { it:'Password min. 6 caratteri',       en:'Password min. 6 chars' },
-  'auth/invalid-email':        { it:'Email non valida',                en:'Invalid email' },
-  'auth/invalid-credential':   { it:'Credenziali non valide',          en:'Invalid credentials' },
+  'auth/user-not-found':       { it:'Nessun account con questa email', en:'No account found' },
+  'auth/wrong-password':       { it:'Password errata', en:'Wrong password' },
+  'auth/email-already-in-use': { it:'Email già in uso', en:'Email already in use' },
+  'auth/weak-password':        { it:'Password min. 6 caratteri', en:'Password min. 6 chars' },
+  'auth/invalid-email':        { it:'Email non valida', en:'Invalid email' },
+  'auth/invalid-credential':   { it:'Credenziali non valide', en:'Invalid credentials' },
 }
 
 export default function AuthPage() {
@@ -22,6 +21,7 @@ export default function AuthPage() {
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [name,     setName]     = useState('')
+  const [showPw,   setShowPw]   = useState(false)
   const [loading,  setLoading]  = useState(null)
 
   async function submit(e) {
@@ -30,10 +30,14 @@ export default function AuthPage() {
     try {
       if (mode === 'login')    await loginEmail(email, password)
       else if (mode === 'reg') await registerEmail(email, password, name)
-      else { await resetPassword(email); toast.success(lang==='it'?'Email inviata!':'Email sent!'); setMode('login'); setLoading(null); return }
-      toast.success(lang==='it'?'Benvenuto! 🗺️':'Welcome! 🗺️')
+      else {
+        await resetPassword(email)
+        toast.success(lang === 'it' ? 'Email inviata! Controlla la tua casella.' : 'Email sent! Check your inbox.')
+        setMode('login'); setLoading(null); return
+      }
+      toast.success(lang === 'it' ? 'Benvenuto! 🗺️' : 'Welcome! 🗺️')
       navigate('/dashboard')
-    } catch(err) {
+    } catch (err) {
       toast.error(ERR[err.code]?.[lang] || err.message)
     } finally { setLoading(null) }
   }
@@ -41,114 +45,152 @@ export default function AuthPage() {
   async function social(fn, key) {
     setLoading(key)
     try { await fn(); navigate('/dashboard') }
-    catch(err) { if (err.code !== 'auth/popup-closed-by-user') toast.error(err.message) }
+    catch (err) { if (err.code !== 'auth/popup-closed-by-user') toast.error(err.message) }
     finally { setLoading(null) }
   }
+
+  const isIt = lang === 'it'
 
   return (
     <div className={s.page}>
       {/* Topbar */}
       <div className={s.topbar}>
-        <div className={s.logo}><Compass size={19} style={{color:'var(--accent)'}}/> Road-Trip</div>
+        <Link to="/" className={s.logo}>
+          <Compass size={18} style={{ color:'var(--fire)' }}/> Road-Trip
+        </Link>
         <div className={s.topRight}>
           <div className={s.langSwitch}>
-            {['it','en'].map(l=>(
-              <button key={l} className={[s.langBtn,lang===l?s.langActive:''].join(' ')} onClick={()=>changeLang(l)}>{l.toUpperCase()}</button>
+            {['it','en'].map(l => (
+              <button key={l} className={[s.langBtn, lang===l ? s.langActive : ''].join(' ')} onClick={() => changeLang(l)}>
+                {l.toUpperCase()}
+              </button>
             ))}
           </div>
-          <button className={s.themeBtn} onClick={toggleTheme}>{theme==='dark'?<Sun size={15}/>:<Moon size={15}/>}</button>
+          <button className={s.themeBtn} onClick={toggleTheme}>
+            {theme==='dark' ? <Sun size={15}/> : <Moon size={15}/>}
+          </button>
         </div>
       </div>
 
-      <div className={s.center}>
-        {/* Left hero */}
-        <div className={s.heroSide}>
-          <div className={s.heroIcon}>🗺️</div>
-          <h1 className={s.heroTitle}>{t('hero_title').split('\n').map((l,i)=><span key={i}>{l}<br/></span>)}</h1>
-          <p className={s.heroDesc}>{t('hero_desc')}</p>
-          <div className={s.stats}>
-            <Stat n="12k+" label={lang==='it'?'Percorsi':'Routes'}/>
-            <Stat n="89"   label={lang==='it'?'Paesi':'Countries'}/>
-            <Stat n="4.8★" label="Rating"/>
+      <div className={s.split}>
+        {/* Left panel */}
+        <div className={s.left}>
+          <div className={s.leftInner}>
+            <div className={s.tagline}>
+              <span className={s.taglineAccent}>Road-Trip</span>
+              <h2>{isIt ? 'La strada è il viaggio.' : 'The road is the journey.'}</h2>
+              <p>{isIt ? 'Percorsi reali. GPX ad alta densità. Documenti per ogni paese.' : 'Real routes. High-density GPX. Documents for every country.'}</p>
+            </div>
+            <div className={s.stats}>
+              {[
+                { n:'14.200+', l: isIt ? 'Percorsi creati' : 'Routes created' },
+                { n:'5000–10k', l: isIt ? 'Punti GPX' : 'GPX points' },
+                { n:'50+',     l: isIt ? 'Paesi coperti' : 'Countries covered' },
+              ].map(st => (
+                <div key={st.n} className={s.stat}>
+                  <span className={s.statN}>{st.n}</span>
+                  <span className={s.statL}>{st.l}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Card */}
-        <div className={s.card}>
-          {mode === 'reset'
-            ? <h2 className={s.resetTitle}>{t('reset')}</h2>
-            : (
-              <div className={s.tabs}>
-                <button className={[s.tab,mode==='login'?s.tabActive:''].join(' ')} onClick={()=>setMode('login')}>{t('signin')}</button>
-                <button className={[s.tab,mode==='reg'  ?s.tabActive:''].join(' ')} onClick={()=>setMode('reg')}>{t('register')}</button>
-              </div>
-            )
-          }
+        {/* Right panel — form */}
+        <div className={s.right}>
+          <div className={s.card}>
+            {/* Tabs */}
+            <div className={s.tabs}>
+              <button className={[s.tab, mode==='login' ? s.tabActive : ''].join(' ')} onClick={() => setMode('login')}>
+                {isIt ? 'Accedi' : 'Sign in'}
+              </button>
+              <button className={[s.tab, mode==='reg' ? s.tabActive : ''].join(' ')} onClick={() => setMode('reg')}>
+                {isIt ? 'Registrati' : 'Sign up'}
+              </button>
+            </div>
 
-          {mode !== 'reset' && (
-            <>
+            <h1 className={s.cardTitle}>
+              {mode==='login' ? (isIt ? 'Bentornato' : 'Welcome back')
+               : mode==='reg' ? (isIt ? 'Crea account' : 'Create account')
+               : (isIt ? 'Reset password' : 'Reset password')}
+            </h1>
+
+            {/* Social */}
+            {mode !== 'reset' && (
               <div className={s.socials}>
-                <button className={s.socialBtn} onClick={()=>social(loginGoogle,'google')} disabled={!!loading}>
-                  {loading==='google'?<Spin/>:<GIcon/>} {t('with_google')}
+                <button className={s.socialBtn} onClick={() => social(loginGoogle, 'google')} disabled={!!loading}>
+                  {loading==='google' ? <Spin/> : (
+                    <svg width="16" height="16" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                  )}
+                  Google
                 </button>
-                <button className={s.socialBtn} onClick={()=>social(loginApple,'apple')} disabled={!!loading}>
-                  {loading==='apple'?<Spin/>:<AIcon/>} {t('with_apple')}
+                <button className={s.socialBtn} onClick={() => social(loginApple, 'apple')} disabled={!!loading}>
+                  {loading==='apple' ? <Spin/> : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.4c1.4.07 2.38.74 3.2.8 1.22-.24 2.38-.93 3.7-.84 1.58.12 2.77.72 3.54 1.82-3.26 1.97-2.72 6.08.54 7.27-.65 1.65-1.5 3.28-3 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                    </svg>
+                  )}
+                  Apple
                 </button>
               </div>
-              <div className={s.divider}><span>or</span></div>
-            </>
-          )}
+            )}
 
-          <form onSubmit={submit} className={s.form}>
-            {mode==='reg' && <F label={t('fullname')} type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="Marco Rossi" required/>}
-            <F label={t('email')} type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required/>
-            {mode!=='reset' && <F label={t('password')} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required minLength={6}/>}
-            {mode==='login' && <button type="button" className={s.forgot} onClick={()=>setMode('reset')}>{t('forgot')}</button>}
-            <button className={s.submitBtn} type="submit" disabled={!!loading}>
-              {loading==='email'?<Spin white/>:mode==='login'?t('signin'):mode==='reg'?t('register'):t('send_reset')}
-            </button>
-            {mode==='reset' && <button type="button" className={s.backBtn} onClick={()=>setMode('login')}>{t('back_login')}</button>}
-          </form>
+            {mode !== 'reset' && <div className={s.divider}><span>{isIt ? 'oppure con email' : 'or with email'}</span></div>}
+
+            {/* Form */}
+            <form onSubmit={submit} className={s.form}>
+              {mode === 'reg' && (
+                <div className={s.field}>
+                  <label className="field-label">{isIt ? 'Nome completo' : 'Full name'}</label>
+                  <input className="field-input" value={name} onChange={e => setName(e.target.value)} placeholder={isIt ? 'Mario Rossi' : 'John Doe'} required/>
+                </div>
+              )}
+              <div className={s.field}>
+                <label className="field-label">Email</label>
+                <input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" required/>
+              </div>
+              {mode !== 'reset' && (
+                <div className={s.field}>
+                  <label className="field-label">{isIt ? 'Password' : 'Password'}</label>
+                  <div className={s.pwRow}>
+                    <input className="field-input" type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required minLength={6} style={{ paddingRight:36 }}/>
+                    <button type="button" className={s.eyeBtn} onClick={() => setShowPw(p => !p)}>
+                      {showPw ? <EyeOff size={14}/> : <Eye size={14}/>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <button type="submit" className={s.submitBtn} disabled={!!loading}>
+                {loading==='email' ? <Spin white/> : null}
+                {mode==='login' ? (isIt ? 'Accedi' : 'Sign in')
+                 : mode==='reg' ? (isIt ? 'Crea account' : 'Create account')
+                 : (isIt ? 'Invia email reset' : 'Send reset email')}
+              </button>
+            </form>
+
+            <div className={s.footer}>
+              {mode === 'login' && (
+                <>
+                  <button className={s.link} onClick={() => setMode('reset')}>{isIt ? 'Password dimenticata?' : 'Forgot password?'}</button>
+                  <button className={s.link} onClick={() => setMode('reg')}>{isIt ? 'Crea un account →' : 'Create an account →'}</button>
+                </>
+              )}
+              {mode === 'reg' && <button className={s.link} onClick={() => setMode('login')}>{isIt ? '← Hai già un account?' : '← Already have an account?'}</button>}
+              {mode === 'reset' && <button className={s.link} onClick={() => setMode('login')}>{isIt ? '← Torna al login' : '← Back to login'}</button>}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  )
-}
-
-function F({ label, ...props }) {
-  return (
-    <div style={{display:'flex',flexDirection:'column',gap:5}}>
-      <label style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.5px'}}>{label}</label>
-      <input
-        style={{background:'var(--bg3)',border:'1.5px solid var(--border)',borderRadius:9,padding:'10px 13px',color:'var(--text)',fontSize:14,outline:'none',width:'100%',transition:'border-color .15s',fontFamily:'inherit'}}
-        onFocus={e=>e.target.style.borderColor='var(--accent)'}
-        onBlur={e=>e.target.style.borderColor='var(--border)'}
-        {...props}
-      />
-    </div>
-  )
-}
-
-function Stat({ n, label }) {
-  return (
-    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-      <strong style={{fontFamily:'var(--font-head)',fontSize:22,fontWeight:800,color:'var(--accent)'}}>{n}</strong>
-      <span style={{fontSize:12,color:'var(--text3)'}}>{label}</span>
     </div>
   )
 }
 
 function Spin({ white }) {
-  return <div style={{width:14,height:14,border:`2px solid ${white?'rgba(255,255,255,.3)':'var(--border2)'}`,borderTopColor:white?'#fff':'var(--accent)',borderRadius:'50%',animation:'spin .7s linear infinite',flexShrink:0}}/>
-}
-
-function GIcon() {
-  return <svg width="17" height="17" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908C16.658 14.013 17.64 11.705 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#34A853"/><path d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
-}
-function AIcon() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style={{flexShrink:0}}>
-      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-    </svg>
-  )
+  return <div style={{ width:14, height:14, border:`2px solid ${white?'rgba(255,255,255,.35)':'var(--border3)'}`, borderTopColor:white?'#fff':'var(--fire)', borderRadius:'50%', animation:'spin .7s linear infinite', flexShrink:0 }}/>
 }
