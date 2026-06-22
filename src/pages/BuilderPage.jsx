@@ -220,7 +220,11 @@ function GeneratedResult({ trip, lang }) {
             <div className={s.tlBody}>
               <div className={s.tlRow}>
                 <div>
-                  <div className={s.tlCity}>{stop.city}</div>
+                  <div className={s.tlCity}>
+                    {i === 0 
+                      ? stop.city 
+                      : `${trip.stops[i-1].city} → ${stop.city}`}
+                  </div>
                   <div className={s.tlMeta}>{stop.country} · {stop.nights} {stop.nights>1?(isIt?'notti':'nights'):(isIt?'notte':'night')} {stop.vibe && <span className={s.vibeBadge}>{stop.vibe}</span>}</div>
                 </div>
                 <div className={s.tlRight}>
