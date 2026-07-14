@@ -1,4 +1,4 @@
-# 🗺️ Road-Trip v3
+# 🗺️ Road-Trip v4
 
 Piattaforma per road trip con routing stradale reale, export GPX e community.
 
@@ -35,3 +35,4 @@ VITE_ORS_API_KEY=          ← da openrouteservice.org (gratuito)
 2. Netlify → Import from Git → seleziona repo
 3. Build: `npm ci && npm run build` / Publish: `dist`
 4. Aggiungi le variabili d'ambiente su Netlify
+5. Firebase Console → Authentication → Settings → Authorized domains → aggiungi il dominio Netlify (es. `tuo-sito.netlify.app`), altrimenti il login darà errore `auth/unauthorized-domain`

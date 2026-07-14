@@ -147,10 +147,10 @@
 .tlBody { flex: 1; min-width: 0; }
 .tlRow  { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .tlCity { font-size: 15px; font-weight: 700; color: var(--tx); }
+.tlSegInfo { font-size: 12px; font-weight: 500; color: var(--tx3); }
 .tlMeta { font-size: 12px; color: var(--tx3); margin-top: 2px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .vibeBadge { background: var(--forest-bg); color: var(--forest); padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; }
 .tlRight { display: flex; align-items: center; gap: 8px; flex-shrink: 0; color: var(--tx3); }
-.driveTag { background: var(--bg3); padding: 3px 8px; border-radius: 10px; font-size: 11px; color: var(--tx2); white-space: nowrap; }
 
 .tlDetails { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 .tlDesc    { font-size: 13px; color: var(--tx2); line-height: 1.6; margin-bottom: 10px; }

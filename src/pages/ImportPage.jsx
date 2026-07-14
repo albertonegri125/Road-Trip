@@ -66,7 +66,7 @@ export default function ImportPage() {
       })
       toast.success(isIt ? 'Viaggio importato! ✅' : 'Trip imported! ✅')
       navigate('/my-trips')
-    } catch (err) { console.error(err); toast.error('Import failed') }
+    } catch (err) { if (import.meta.env.DEV) console.error(err); toast.error('Import failed') }
     finally { setSaving(false) }
   }
 

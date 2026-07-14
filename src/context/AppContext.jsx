@@ -12,11 +12,8 @@ import { T } from '../i18n/translations'
 const Ctx = createContext(null)
 
 export function AppProvider({ children }) {
-  // ── Theme ──
-  const [theme, setTheme] = useState(() =>
-    localStorage.getItem('rt-theme') ||
-    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-  )
+  // ── Theme — light by default, only a saved user choice switches to dark ──
+  const [theme, setTheme] = useState(() => localStorage.getItem('rt-theme') || 'light')
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('rt-theme', theme)

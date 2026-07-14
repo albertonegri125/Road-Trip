@@ -65,10 +65,10 @@ export async function calculateRoute(waypoints, tripType = 'car') {
     const feature = data.features[0]
     const summary = feature.properties.summary
     const geometry = feature.geometry.coordinates
-    console.log(`ORS: ${geometry.length} pts, ${Math.round(summary.distance/1000)} km, profile: ${profile}`)
+    if (import.meta.env.DEV) console.log(`ORS: ${geometry.length} pts, ${Math.round(summary.distance/1000)} km, profile: ${profile}`)
     return { distance_km: Math.round(summary.distance / 1000), duration_min: Math.round(summary.duration / 60), geometry, segments: feature.properties.segments || [] }
   } catch (err) {
-    console.warn('ORS failed:', err.message)
+    if (import.meta.env.DEV) console.warn('ORS failed:', err.message)
     return straightLineRoute(waypoints)
   }
 }
@@ -147,11 +147,12 @@ export async function generateRealStops(fromCoords, toCoords, fromName, toName, 
   }
 
   // 4. Build stops — fromName/toName always used as typed by user
-  const toGeo = toCoords ? await reverseGeocode(toCoords.lat, toCoords.lng) : { country: '' }
+  // Reuse country from the initial geocode when available, skip a redundant Nominatim call
+  const toCountry = toCoords.country || (await reverseGeocode(toCoords.lat, toCoords.lng)).country || ''
   const allStops = [
-    { city: fromName, country: '', lat: fromCoords.lat, lng: fromCoords.lng, drive_from_prev_km: 0, drive_from_prev_h: 0, isStart: true },
+    { city: fromName, country: fromCoords.country || '', lat: fromCoords.lat, lng: fromCoords.lng, drive_from_prev_km: 0, drive_from_prev_min: 0, isStart: true },
     ...intermediateCities,
-    { city: toName, country: toGeo.country || '', lat: toCoords.lat, lng: toCoords.lng, isEnd: true },
+    { city: toName, country: toCountry, lat: toCoords.lat, lng: toCoords.lng, isEnd: true },
   ]
 
   // 5. Calculate per-segment routes for accurate km + build continuous geometry
@@ -163,8 +164,8 @@ export async function generateRealStops(fromCoords, toCoords, fromName, toName, 
     const to   = allStops[i + 1]
     const seg  = await routeSegment(from, to, vehicle)
     if (seg) {
-      allStops[i + 1].drive_from_prev_km = seg.distance_km
-      allStops[i + 1].drive_from_prev_h  = Math.round(seg.duration_min / 60 * 10) / 10
+      allStops[i + 1].drive_from_prev_km  = seg.distance_km
+      allStops[i + 1].drive_from_prev_min = seg.duration_min
       totalSegKm  += seg.distance_km
       totalSegMin += seg.duration_min
       if (allGeometry.length === 0) allGeometry.push(...seg.geometry)
@@ -172,8 +173,8 @@ export async function generateRealStops(fromCoords, toCoords, fromName, toName, 
     } else {
       // Fallback: straight line for this segment
       const km = Math.round(haversine(from, to) * 1.3)
-      allStops[i + 1].drive_from_prev_km = km
-      allStops[i + 1].drive_from_prev_h  = Math.round(km / 70 * 10) / 10
+      allStops[i + 1].drive_from_prev_km  = km
+      allStops[i + 1].drive_from_prev_min = Math.round(km / 70 * 60)
     }
     if (i < allStops.length - 2) await sleep(300)
   }
@@ -190,9 +191,21 @@ export async function generateRealStops(fromCoords, toCoords, fromName, toName, 
   const finalGeometry = allGeometry.length > 0 ? allGeometry : fullRoute?.geometry || []
   const finalKm = totalSegKm > 0 ? totalSegKm : totalKm
 
-  console.log(`Trip: ${allStops.length} stops, ${finalKm} km, ${finalGeometry.length} geometry points`)
+  if (import.meta.env.DEV) console.log(`Trip: ${allStops.length} stops, ${finalKm} km, ${finalGeometry.length} geometry points`)
 
   return { stops: allStops, geometry: finalGeometry, distance_km: finalKm, duration_min: totalSegMin || fullRoute?.duration_min || Math.round(finalKm / 70 * 60) }
+}
+
+// ORS returns one segment per leg between consecutive coordinates in request order,
+// so segments[i-1] is always the drive from waypoints[i-1] to waypoints[i].
+export function attachSegmentDistances(waypoints, route) {
+  if (!route?.segments?.length) return waypoints
+  return waypoints.map((wp, i) => {
+    if (i === 0) return wp
+    const seg = route.segments[i - 1]
+    if (!seg) return wp
+    return { ...wp, drive_from_prev_km: Math.round(seg.distance / 1000), drive_from_prev_min: Math.round(seg.duration / 60) }
+  })
 }
 
 function haversine(a, b) {
@@ -207,8 +220,11 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
 function densifyGeometry(geometry, targetPoints = 7000) {
   if (!geometry || geometry.length === 0) return geometry
-  if (geometry.length >= targetPoints) { console.log(`GPX: ${geometry.length} ORS pts (no densify needed)`); return geometry }
-  console.log(`GPX: densifying ${geometry.length} → ${targetPoints} pts`)
+  if (geometry.length >= targetPoints) {
+    if (import.meta.env.DEV) console.log(`GPX: ${geometry.length} ORS pts (no densify needed)`)
+    return geometry
+  }
+  if (import.meta.env.DEV) console.log(`GPX: densifying ${geometry.length} → ${targetPoints} pts`)
   let totalDist = 0
   const segLengths = []
   for (let i = 0; i < geometry.length - 1; i++) {

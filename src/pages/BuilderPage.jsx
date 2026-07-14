@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import { useNavigate } from 'react-router-dom'
 import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import { calculateRoute, buildGPX, downloadGPX } from '../lib/routing'
+import { calculateRoute, buildGPX, downloadGPX, attachSegmentDistances } from '../lib/routing'
 import { generateTripWithAI, enrichStop, getVehicleDocuments, getHealthRequirements, getOfficialPortal } from '../lib/aiTrip'
 import GeoInput from '../components/ui/GeoInput'
 import {
@@ -68,15 +68,23 @@ function TouristSlider({ value, onChange, lang }) {
 }
 
 // ── Stop card (expert) ──
-function StopCard({ stop, index, onRemove, onUpdate, onEnrich, enrichingId, lang }) {
+function StopCard({ stop, index, prevName, onRemove, onUpdate, onEnrich, enrichingId, lang }) {
   const [exp, setExp] = useState(false)
+  const isIt = lang === 'it'
+  const label = index > 0 && prevName
+    ? `${prevName} → ${stop.name || (isIt ? 'Tappa' : 'Stop')}`
+    : (stop.name || (isIt ? 'Tappa' : 'Stop'))
 
   return (
     <div className={[s.stopCard, stop.enriched ? s.stopEnriched : ''].join(' ')}>
       <div className={s.stopHead}>
         <div className={s.stopBadge}>{index + 1}</div>
         <div className={s.stopMain}>
-          <div className={s.stopName}>{stop.name || (lang==='it' ? 'Tappa' : 'Stop')}</div>
+          <div className={s.stopName}>
+            {label}
+            {stop.drive_from_prev_km > 0 &&
+              <span className={s.tlSegInfo}> · {stop.drive_from_prev_km} km · {fmtDur(stop.drive_from_prev_min || 0, lang)}</span>}
+          </div>
           {stop.country && <div className={s.stopCountry}>{stop.country}</div>}
         </div>
         <div className={s.stopActions}>
@@ -221,14 +229,15 @@ function GeneratedResult({ trip, lang }) {
               <div className={s.tlRow}>
                 <div>
                   <div className={s.tlCity}>
-                    {i === 0 
-                      ? stop.city 
+                    {i === 0
+                      ? stop.city
                       : `${trip.stops[i-1].city} → ${stop.city}`}
+                    {stop.drive_from_prev_km > 0 &&
+                      <span className={s.tlSegInfo}> · {stop.drive_from_prev_km} km · {fmtDur(stop.drive_from_prev_min || 0, lang)}</span>}
                   </div>
                   <div className={s.tlMeta}>{stop.country} · {stop.nights} {stop.nights>1?(isIt?'notti':'nights'):(isIt?'notte':'night')} {stop.vibe && <span className={s.vibeBadge}>{stop.vibe}</span>}</div>
                 </div>
                 <div className={s.tlRight}>
-                  {stop.drive_from_prev_km > 0 && <span className={s.driveTag}>🚗 {stop.drive_from_prev_km}km</span>}
                   {open === i ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
                 </div>
               </div>
@@ -336,7 +345,7 @@ export default function BuilderPage() {
       setGenerated(result)
       toast.success(isIt ? 'Itinerario generato! 🗺️' : 'Itinerary generated! 🗺️')
     } catch (err) {
-      console.error(err)
+      if (import.meta.env.DEV) console.error(err)
       toast.error(isIt ? `Errore: ${err.message}` : `Error: ${err.message}`)
     } finally { setAiLoading(false) }
   }
@@ -368,6 +377,7 @@ export default function BuilderPage() {
     try {
       const result = await calculateRoute(stops, vehicle)
       setRoute(result)
+      setStops(prev => attachSegmentDistances(prev, result))
       toast.success(isIt ? 'Percorso calcolato!' : 'Route calculated!')
     } catch { toast.error(isIt ? 'Errore calcolo percorso' : 'Route calculation error') }
     finally { setCalcLoading(false) }
@@ -419,7 +429,7 @@ export default function BuilderPage() {
       await updateDoc(doc(db,'users',user.uid), { tripsCreated: increment(1) })
       toast.success(isIt ? 'Viaggio salvato! 🗺️' : 'Trip saved! 🗺️')
       navigate('/my-trips')
-    } catch (err) { console.error(err); toast.error('Save failed') }
+    } catch (err) { if (import.meta.env.DEV) console.error(err); toast.error('Save failed') }
     finally { setSaving(false) }
   }
 
@@ -458,10 +468,10 @@ export default function BuilderPage() {
             <>
               <div className={s.card}>
                 <div className={s.cardTitle}>{isIt ? 'Dove vuoi andare?' : 'Where do you want to go?'}</div>
-                <GeoInput value={from} onChange={setFrom} onSelect={r => setFromCoords({ lat:r.lat, lng:r.lng })}
+                <GeoInput value={from} onChange={setFrom} onSelect={r => setFromCoords({ lat:r.lat, lng:r.lng, country:r.country })}
                   label={t('build_from')} placeholder={isIt ? 'es. Milano, Italia' : 'e.g. Milan, Italy'}/>
                 <div style={{height:10}}/>
-                <GeoInput value={to} onChange={setTo} onSelect={r => setToCoords({ lat:r.lat, lng:r.lng })}
+                <GeoInput value={to} onChange={setTo} onSelect={r => setToCoords({ lat:r.lat, lng:r.lng, country:r.country })}
                   label={t('build_to')} placeholder={isIt ? 'es. Istanbul, Turchia' : 'e.g. Istanbul, Turkey'}/>
                 <div className={s.row2} style={{marginTop:12}}>
                   <div>
@@ -571,7 +581,7 @@ export default function BuilderPage() {
                     <span className={s.aiHint}><Sparkles size={11}/> {isIt ? 'Clicca ✨ per dettagli' : 'Click ✨ for details'}</span>
                   </div>
                   {stops.map((stop, i) => (
-                    <StopCard key={stop.id} stop={stop} index={i} lang={lang}
+                    <StopCard key={stop.id} stop={stop} index={i} prevName={stops[i-1]?.name} lang={lang}
                       onRemove={removeStop} onUpdate={updateStop}
                       onEnrich={handleEnrich} enrichingId={enrichingId}/>
                   ))}
