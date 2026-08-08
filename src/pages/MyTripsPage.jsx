@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore'
+import { collection, query, where, orderBy, getDocs, getDoc, deleteDoc, doc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { Map, Plus, Trash2, Download, Clock, Route as RouteIcon } from 'lucide-react'
 import { buildGPX, downloadGPX } from '../lib/routing'
@@ -26,13 +26,22 @@ export default function MyTripsPage() {
   async function handleDelete(id) {
     if (!confirm(isIt ? 'Eliminare questo viaggio?' : 'Delete this trip?')) return
     await deleteDoc(doc(db,'trips',id))
+    // Best-effort cleanup of the geometry subdoc — fine if it never existed (old trips).
+    deleteDoc(doc(db,'trips',id,'geometry','data')).catch(() => {})
     setTrips(prev => prev.filter(t => t.id !== id))
     toast.success(isIt ? 'Viaggio eliminato.' : 'Trip deleted.')
   }
 
-  function handleGPX(trip) {
+  async function handleGPX(trip) {
     if (!trip.stops?.length) { toast.error(isIt?'Nessuna tappa':'No stops'); return }
-    const geo = trip.stops.map(s => [s.lng||0, s.lat||0])
+    // Real ORS geometry lives in its own doc, fetched only here on demand — never loaded
+    // just to render this list. Trips saved before this fix have no such doc, so we fall
+    // back to straight chords between stops for those.
+    let geo = trip.stops.map(s => [s.lng||0, s.lat||0])
+    try {
+      const geoSnap = await getDoc(doc(db,'trips',trip.id,'geometry','data'))
+      if (geoSnap.exists() && geoSnap.data().points?.length) geo = geoSnap.data().points
+    } catch (err) { if (import.meta.env.DEV) console.warn('Geometry fetch failed:', err.message) }
     const gpx = buildGPX(trip.title, trip.stops.map(s=>({name:s.city||s.name, lat:s.lat, lng:s.lng, nights:s.nights})), geo, 7000)
     downloadGPX(trip.title || 'trip', gpx)
     toast.success(isIt ? 'GPX scaricato (~7000 punti)' : 'GPX downloaded (~7000 points)')

@@ -31,11 +31,18 @@ export default function TripDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  function handleGPX() {
+  async function handleGPX() {
     if (!trip?.stops?.length) { toast.error(isIt?'Nessuna tappa':'No stops'); return }
     const stops = trip.stops.map(s => ({ name: s.city||s.name||'Stop', lat:s.lat, lng:s.lng, nights:s.nights }))
-    const geo   = stops.map(s => [s.lng||0, s.lat||0])
-    const gpx   = buildGPX(trip.title, stops, geo, 7000)
+    // Real ORS geometry lives in its own doc (trips/{id}/geometry/data), fetched only here,
+    // on demand — never loaded just to render the trip page. Trips saved before this fix
+    // have no such doc, so we fall back to straight chords between stops for those.
+    let geo = stops.map(s => [s.lng||0, s.lat||0])
+    try {
+      const geoSnap = await getDoc(doc(db,'trips',id,'geometry','data'))
+      if (geoSnap.exists() && geoSnap.data().points?.length) geo = geoSnap.data().points
+    } catch (err) { if (import.meta.env.DEV) console.warn('Geometry fetch failed:', err.message) }
+    const gpx = buildGPX(trip.title, stops, geo, 7000)
     downloadGPX(trip.title||'trip', gpx)
     toast.success(isIt ? 'GPX scaricato (~7000 punti) ✅' : 'GPX downloaded (~7000 points) ✅')
   }

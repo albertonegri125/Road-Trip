@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useApp } from '../context/AppContext'
 import { useNavigate } from 'react-router-dom'
-import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore'
+import { collection, addDoc, setDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { calculateRoute, buildGPX, downloadGPX, attachSegmentDistances } from '../lib/routing'
 import { generateTripWithAI, enrichStop, getVehicleDocuments, getHealthRequirements, getOfficialPortal } from '../lib/aiTrip'
@@ -362,7 +362,7 @@ export default function BuilderPage() {
   async function handleEnrich(stop) {
     setEnrichingId(stop.id)
     try {
-      const data = await enrichStop(stop.name, stop.country, vehicle, touristLevel, lang)
+      const data = await enrichStop(stop.name, stop.country, vehicle, touristLevel, interests, lang)
       if (data) {
         setStops(prev => prev.map(s => s.id===stop.id ? {...s,...data,enriched:true} : s))
         toast.success(isIt ? `${stop.name} arricchita ✨` : `${stop.name} enriched ✨`)
@@ -390,7 +390,11 @@ export default function BuilderPage() {
       ? (generated?.stops || []).map(s => ({ name:s.city, lat:s.lat, lng:s.lng, nights:s.nights }))
       : stops
     if (!allStops.length) { toast.error(isIt ? 'Nessuna tappa' : 'No stops'); return }
-    const geo = route?.geometry || allStops.map(s => [s.lng||0, s.lat||0])
+    // Base mode: real ORS geometry lives on `generated` (set by generateTripWithAI).
+    // Expert mode: real geometry lives on `route` (set by handleCalcRoute).
+    // Fall back to straight chords between stops only if neither is available.
+    const realGeo = mode === 'base' ? generated?.geometry : route?.geometry
+    const geo = realGeo?.length ? realGeo : allStops.map(s => [s.lng||0, s.lat||0])
     // 7000 points by default — between 5000–10000 range
     const gpx = buildGPX(
       mode==='base' ? (generated?.title || `${from} → ${to}`) : (title || `${stops[0]?.name} → ${stops[stops.length-1]?.name}`),
@@ -408,6 +412,7 @@ export default function BuilderPage() {
       const tripTitle = isBase
         ? (generated?.title || `${from} → ${to}`)
         : (title || `${stops[0]?.name || from} → ${stops[stops.length-1]?.name || to}`)
+      const geometry = isBase ? (generated?.geometry || []) : (route?.geometry || [])
       const data = {
         type: isBase ? 'base' : 'expert', tripType: vehicle,
         title: tripTitle, tagline: isBase ? generated?.tagline : '',
@@ -425,7 +430,13 @@ export default function BuilderPage() {
         status:'planning', isPast:false, isPublic:false,
         userId: user.uid, createdAt: serverTimestamp(),
       }
-      await addDoc(collection(db,'trips'), data)
+      const tripRef = await addDoc(collection(db,'trips'), data)
+      // Real road geometry lives in its own doc so listing trips (MyTripsPage) never
+      // downloads it — it's fetched on demand only when a GPX is actually exported.
+      if (geometry.length > 0) {
+        await setDoc(doc(db,'trips',tripRef.id,'geometry','data'), { points: geometry, savedAt: serverTimestamp() })
+          .catch(err => { if (import.meta.env.DEV) console.warn('Geometry save failed:', err.message) })
+      }
       await updateDoc(doc(db,'users',user.uid), { tripsCreated: increment(1) })
       toast.success(isIt ? 'Viaggio salvato! 🗺️' : 'Trip saved! 🗺️')
       navigate('/my-trips')

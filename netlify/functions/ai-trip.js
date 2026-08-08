@@ -21,7 +21,7 @@ export default async (req, context) => {
 
   try {
     const body = await req.json()
-    const { prompt, max_tokens = 4000 } = body
+    const { prompt, system, max_tokens = 4000, output_schema, effort, model = 'claude-opus-5' } = body
 
     if (!prompt) {
       return new Response(JSON.stringify({ error: 'Missing prompt' }), { status: 400, headers })
@@ -32,6 +32,19 @@ export default async (req, context) => {
       return new Response(JSON.stringify({ error: 'API key not configured' }), { status: 500, headers })
     }
 
+    const anthropicBody = {
+      model,
+      max_tokens,
+      messages: [{ role: 'user', content: prompt }],
+    }
+    if (system) anthropicBody.system = system
+    // `effort` is Opus/Sonnet-5-tier only — pre-4.6 models like claude-haiku-4-5 400 if it's
+    // sent at all, so only include output_config when the caller actually asked for something.
+    const output_config = {}
+    if (effort) output_config.effort = effort
+    if (output_schema) output_config.format = { type: 'json_schema', schema: output_schema }
+    if (Object.keys(output_config).length) anthropicBody.output_config = output_config
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -39,11 +52,7 @@ export default async (req, context) => {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens,
-        messages: [{ role: 'user', content: prompt }],
-      }),
+      body: JSON.stringify(anthropicBody),
     })
 
     if (!response.ok) {

@@ -38,11 +38,22 @@ export async function geocodeCity(cityName) {
 
 async function reverseGeocode(lat, lng) {
   try {
-    const res  = await fetch(`${NOM_BASE}/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=10&accept-language=it,en`)
+    // extratags=1 rides the same request already being made — no extra HTTP call,
+    // no extra 1.1s Nominatim wait — and surfaces population/importance for free.
+    const res  = await fetch(`${NOM_BASE}/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&extratags=1&zoom=10&accept-language=it,en`)
     const data = await res.json()
-    const a = data.address || {}
-    return { city: a.city || a.town || a.village || a.municipality || a.county || data.name || '', country: a.country || '', countryCode: a.country_code?.toUpperCase() || '' }
-  } catch { return { city: '', country: '', countryCode: '' } }
+    const a  = data.address || {}
+    const et = data.extratags || {}
+    return {
+      city: a.city || a.town || a.village || a.municipality || a.county || data.name || '',
+      country: a.country || '',
+      countryCode: a.country_code?.toUpperCase() || '',
+      placeType: a.city ? 'city' : a.town ? 'town' : a.village ? 'village' : a.municipality ? 'municipality' : '',
+      population: et.population ? (parseInt(et.population, 10) || null) : null,
+      // Nominatim's own 0..1 relevance/notability score — a rough "how well-known is this place" proxy
+      importance: typeof data.importance === 'number' ? data.importance : null,
+    }
+  } catch { return { city: '', country: '', countryCode: '', placeType: '', population: null, importance: null } }
 }
 
 export async function calculateRoute(waypoints, tripType = 'car') {
@@ -120,14 +131,100 @@ export async function extractRealCitiesFromRoute(geometry, numCities = 5) {
     const geo  = await reverseGeocode(lat, lng)
     if (geo.city && !seen.has(geo.city.toLowerCase())) {
       seen.add(geo.city.toLowerCase())
-      results.push({ city: geo.city, country: geo.country, countryCode: geo.countryCode, lat, lng })
+      results.push({
+        city: geo.city, country: geo.country, countryCode: geo.countryCode, lat, lng,
+        placeType: geo.placeType, population: geo.population, importance: geo.importance,
+      })
     }
     await sleep(1100)
   }
   return results
 }
 
-export async function generateRealStops(fromCoords, toCoords, fromName, toName, numDays, vehicle) {
+// ── Interest-aware stop selection ──
+// Nominatim gives us place type + population + "importance" (its own 0..1 notability
+// score) for each candidate, but nothing about topic (storia/natura/mare/...) — that
+// signal doesn't exist at the city-boundary level. So the deterministic step below only
+// narrows candidates by how well their "touristiness" matches the declared touristLevel;
+// actual interest-topic matching is left entirely to the AI ranking step, which has real
+// world knowledge of what a given city is known for.
+function touristFitScore(candidate, touristLevel) {
+  const importance = candidate.importance ?? 0.3 // neutral default when Nominatim has none
+  const popScore    = candidate.population ? Math.min(1, Math.log10(candidate.population) / 6) : importance
+  const touristiness = importance * 0.6 + popScore * 0.4 // ~0..1
+  const target = touristLevel / 100
+  return Math.abs(touristiness - target)
+}
+
+async function selectStopsByInterest(candidates, numFinal, interests, touristLevel, vehicle, lang) {
+  // 1. Deterministic prefilter — keep the candidates whose touristiness best matches
+  // touristLevel, trimmed to a shortlist small enough to keep the AI prompt cheap.
+  const shortlistSize = Math.min(candidates.length, Math.max(numFinal * 2, 6))
+  const shortlist = [...candidates]
+    .sort((a, b) => touristFitScore(a, touristLevel) - touristFitScore(b, touristLevel))
+    .slice(0, shortlistSize)
+
+  const routeOrder = candidates.map(c => c.city)
+  const byRouteOrder = list => [...list].sort((a, b) => routeOrder.indexOf(a.city) - routeOrder.indexOf(b.city))
+  // Normalized match: models occasionally return "City (Country)" instead of the bare
+  // name (observed from claude-sonnet-5 in testing) — an exact === match would silently
+  // drop that stop and under-deliver numFinal. Strip parentheticals + case before comparing.
+  const normalize = s => s.toLowerCase().replace(/\s*\([^)]*\)\s*/g, '').trim()
+  const findCandidate = name => {
+    const norm = normalize(name)
+    return shortlist.find(c => normalize(c.city) === norm)
+        || shortlist.find(c => norm.includes(normalize(c.city)) || normalize(c.city).includes(norm))
+  }
+
+  // 2. AI ranking on the shortlist only — this is where interests (storia/natura/...)
+  // actually get applied. Never let this block trip generation: any failure falls back
+  // to the deterministic shortlist, trimmed and restored to route order.
+  try {
+    const picked = await rankStopsByAI(shortlist, numFinal, interests, touristLevel, vehicle, lang)
+    if (picked?.length) {
+      const matched = picked.map(findCandidate).filter(Boolean)
+      if (matched.length) return byRouteOrder(matched).slice(0, numFinal)
+    }
+  } catch (err) {
+    if (import.meta.env.DEV) console.warn('AI stop ranking failed, using deterministic shortlist:', err.message)
+  }
+  return byRouteOrder(shortlist.slice(0, numFinal))
+}
+
+async function rankStopsByAI(shortlist, numFinal, interests, touristLevel, vehicle, lang) {
+  const isIt = lang !== 'en'
+  const list = shortlist
+    .map((c, i) => `${i + 1}. ${c.city} (${c.country || '?'}) — popolazione: ${c.population || 'n/d'}, notorietà: ${c.importance != null ? Math.round(c.importance * 100) : 'n/d'}`)
+    .join('\n')
+  const prompt = isIt
+    ? `Sei un esperto di viaggi on-the-road. Data questa lista di città reali lungo un percorso stradale (in ordine geografico), scegli esattamente ${numFinal} città come tappe intermedie, privilegiando quelle più in linea con gli interessi dichiarati del viaggiatore.\n\nInteressi: ${interests?.length ? interests.join(', ') : 'nessuno specificato'}\nLivello turistico desiderato (0=fuori dai sentieri battuti, 100=mete iconiche): ${touristLevel}\nVeicolo: ${vehicle}\n\nCittà candidate:\n${list}\n\nScegli esattamente ${numFinal} città da questo elenco.`
+    : `You are a road-trip expert. Given this list of real cities along a road route (in geographic order), choose exactly ${numFinal} cities as intermediate stops, favoring the ones best matching the traveler's stated interests.\n\nInterests: ${interests?.length ? interests.join(', ') : 'none specified'}\nDesired touristiness (0=off the beaten path, 100=iconic destinations): ${touristLevel}\nVehicle: ${vehicle}\n\nCandidate cities:\n${list}\n\nChoose exactly ${numFinal} cities from this list.`
+
+  const output_schema = {
+    type: 'object',
+    properties: { selected: { type: 'array', items: { type: 'string' } } },
+    required: ['selected'],
+    additionalProperties: false,
+  }
+
+  // claude-haiku-4-5 chosen after an A/B/C test against claude-sonnet-5 and claude-opus-5
+  // on 4 realistic route/interest scenarios: identical city selections across all three
+  // models every time, at ~1/6 the per-call cost of Opus 5. No `effort` param — haiku-4-5
+  // is pre-4.6 and 400s if it's sent.
+  const res = await fetch('/api/ai-trip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, max_tokens: 1024, output_schema, model: 'claude-haiku-4-5' }),
+  })
+  if (!res.ok) return null
+  const data  = await res.json()
+  const block = data?.content?.find(b => b.type === 'text')
+  if (!block?.text) return null
+  const parsed = JSON.parse(block.text)
+  return Array.isArray(parsed.selected) ? parsed.selected : null
+}
+
+export async function generateRealStops(fromCoords, toCoords, fromName, toName, numDays, vehicle, interests = [], touristLevel = 50, lang = 'it') {
   const apiKey = import.meta.env.VITE_ORS_API_KEY
 
   // 1. Get full route geometry
@@ -140,10 +237,15 @@ export async function generateRealStops(fromCoords, toCoords, fromName, toName, 
   // 2. Intermediate stops count based on days and distance
   const numIntermediate = Math.max(0, Math.min(6, Math.floor(numDays * 0.5) - 1))
 
-  // 3. Extract real cities along route
+  // 3. Extract real cities along route — oversample so there's an actual pool to choose
+  // from (today's exact-count extraction leaves nothing to filter/rank against).
   let intermediateCities = []
   if (fullRoute?.geometry?.length > 20 && numIntermediate > 0) {
-    intermediateCities = await extractRealCitiesFromRoute(fullRoute.geometry, numIntermediate)
+    const oversample = Math.min(numIntermediate * 2 + 2, 14) // bounds extra Nominatim calls/latency
+    const candidates = await extractRealCitiesFromRoute(fullRoute.geometry, oversample)
+    intermediateCities = candidates.length > numIntermediate
+      ? await selectStopsByInterest(candidates, numIntermediate, interests, touristLevel, vehicle, lang)
+      : candidates
   }
 
   // 4. Build stops — fromName/toName always used as typed by user

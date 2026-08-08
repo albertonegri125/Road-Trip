@@ -182,11 +182,19 @@ function enrichStopFromDB(cityName) {
   return key ? CITY_DB[key] : null
 }
 
-export function enrichStop(stopName, country, vehicle, touristLevel, lang) {
+export function enrichStop(stopName, country, vehicle, touristLevel, interests, lang) {
   const db = enrichStopFromDB(stopName)
+  // touristLevel steers which angle leads the description: below 40 (fuori dai sentieri
+  // battuti) leads with the hidden gem instead of the headline sight.
+  // `interests` is threaded through for a future interest-aware rewrite — matching
+  // free-text see/eat/gem entries against declared interests isn't reliable without either
+  // a tagged POI dataset or a dedicated AI call per stop, both out of scope here.
+  const leadWithGem = touristLevel != null && touristLevel < 40
   if (db) {
     return Promise.resolve({
-      description: `${stopName} — ${db.vibe}. Una tappa imperdibile del tuo percorso.`,
+      description: leadWithGem
+        ? `${stopName} — ${db.vibe}. ${db.gem}`
+        : `${stopName} — ${db.vibe}. Una tappa imperdibile del tuo percorso.`,
       vibe: db.vibe,
       see:   db.see,
       eat:   db.eat,
@@ -196,7 +204,9 @@ export function enrichStop(stopName, country, vehicle, touristLevel, lang) {
     })
   }
   return Promise.resolve({
-    description: `${stopName} è una tappa del tuo viaggio. Esplora il centro storico e chiedi ai locali i loro posti preferiti.`,
+    description: leadWithGem
+      ? `${stopName}: esplora i vicoli fuori dal centro turistico prima di tutto il resto.`
+      : `${stopName} è una tappa del tuo viaggio. Esplora il centro storico e chiedi ai locali i loro posti preferiti.`,
     vibe: 'Scoperta',
     see:  ['Centro storico', 'Mercato locale', 'Punto panoramico'],
     eat:  ['Cucina tipica locale', 'Bar per colazione'],
@@ -248,8 +258,8 @@ export async function generateTripWithAI({ from, to, vehicle, days, season, tour
     tCoords = g
   }
 
-  // 2. Generate real stops via ORS + Nominatim
-  const routeData = await generateRealStops(fCoords, tCoords, from, to, days, vehicle, lang)
+  // 2. Generate real stops via ORS + Nominatim, selected by interests/touristLevel
+  const routeData = await generateRealStops(fCoords, tCoords, from, to, days, vehicle, interests, touristLevel, lang)
 
   // 3. Enrich each stop with local info
   const enrichedStops = await Promise.all(
