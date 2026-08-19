@@ -5,7 +5,7 @@ import { collection, addDoc, setDoc, serverTimestamp, doc, updateDoc, increment 
 import { db } from '../lib/firebase'
 import { calculateRoute, buildGPX, downloadGPX, attachSegmentDistances } from '../lib/routing'
 import { generateTripWithAI, enrichStop, getVehicleDocuments, getHealthRequirements, getOfficialPortal } from '../lib/aiTrip'
-import { fmtDur, nightsLabel } from '../lib/format'
+import { fmtDur } from '../lib/format'
 import GeoInput from '../components/ui/GeoInput'
 import {
   MapPin, Plus, Trash2, GripVertical, Download, Printer,
@@ -218,43 +218,52 @@ function GeneratedResult({ trip, lang }) {
         )}
       </div>
 
-      {/* Timeline */}
+      {/* Timeline — one row per day of driving (stops[i] → stops[i+1]), not per stop.
+          stops[0] is only ever a day's departure, never its own row; the last stop is
+          only ever a day's arrival. Day number = segment index + 1, independent of
+          position in the stops array. */}
       <div className={s.timeline}>
-        {trip.stops?.map((stop, i) => (
-          <div key={i} className={[s.tlItem, open===i ? s.tlOpen : ''].join(' ')} onClick={() => setOpen(open===i ? null : i)}>
-            <div className={s.tlLeft}>
-              <div className={s.tlDot}>{i+1}</div>
-              {i < trip.stops.length - 1 && <div className={s.tlLine}/>}
-            </div>
-            <div className={s.tlBody}>
-              <div className={s.tlRow}>
-                <div>
-                  <div className={s.tlCity}>
-                    {i === 0
-                      ? stop.city
-                      : `${trip.stops[i-1].city} → ${stop.city}`}
-                    {stop.drive_from_prev_km > 0 &&
-                      <span className={s.tlSegInfo}> · {stop.drive_from_prev_km} km · {fmtDur(stop.drive_from_prev_min || 0, lang)}</span>}
-                  </div>
-                  <div className={s.tlMeta}>{stop.country} · {nightsLabel(stop.nights, isIt)} {stop.vibe && <span className={s.vibeBadge}>{stop.vibe}</span>}</div>
-                </div>
-                <div className={s.tlRight}>
-                  {open === i ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
-                </div>
+        {trip.stops?.length > 1 && trip.stops.slice(1).map((to, i) => {
+          const from = trip.stops[i]
+          const day  = i + 1
+          const isLastDay = i === trip.stops.length - 2
+          return (
+            <div key={i} className={[s.tlItem, open===i ? s.tlOpen : ''].join(' ')} onClick={() => setOpen(open===i ? null : i)}>
+              <div className={s.tlLeft}>
+                <div className={s.tlDot}>{day}</div>
+                {!isLastDay && <div className={s.tlLine}/>}
               </div>
-              {open === i && (
-                <div className={s.tlDetails} onClick={e => e.stopPropagation()}>
-                  <p className={s.tlDesc}>{stop.description}</p>
-                  {stop.see?.length>0  && <TlSection icon="👁" title={isIt?'Da vedere':'See'}   items={stop.see}/>}
-                  {stop.eat?.length>0  && <TlSection icon="🍽" title={isIt?'Mangiare':'Eat'}    items={stop.eat}/>}
-                  {stop.sleep?.length>0 && <TlSection icon="🛏" title={isIt?'Dormire':'Sleep'}  items={stop.sleep}/>}
-                  {stop.local_tip  && <div className={s.tipRow}><span>💡</span><span>{stop.local_tip}</span></div>}
-                  {stop.hidden_gem && <div className={s.gemRow}><span>💎</span><span>{stop.hidden_gem}</span></div>}
+              <div className={s.tlBody}>
+                <div className={s.tlRow}>
+                  <div>
+                    <div className={s.tlCity}>
+                      {from.city} → {to.city}
+                      {to.drive_from_prev_km > 0 &&
+                        <span className={s.tlSegInfo}> · {to.drive_from_prev_km} km · {fmtDur(to.drive_from_prev_min || 0, lang)}</span>}
+                    </div>
+                    <div className={s.tlMeta}>{to.country} {to.vibe && <span className={s.vibeBadge}>{to.vibe}</span>}</div>
+                    {to.nights > 1 && (
+                      <div className={s.staySosta}>🏨 {isIt ? `Sosta: ${to.nights} notti a ${to.city}` : `Stay: ${to.nights} nights in ${to.city}`}</div>
+                    )}
+                  </div>
+                  <div className={s.tlRight}>
+                    {open === i ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
+                  </div>
                 </div>
-              )}
+                {open === i && (
+                  <div className={s.tlDetails} onClick={e => e.stopPropagation()}>
+                    <p className={s.tlDesc}>{to.description}</p>
+                    {to.see?.length>0  && <TlSection icon="👁" title={isIt?'Da vedere':'See'}   items={to.see}/>}
+                    {to.eat?.length>0  && <TlSection icon="🍽" title={isIt?'Mangiare':'Eat'}    items={to.eat}/>}
+                    {to.sleep?.length>0 && <TlSection icon="🛏" title={isIt?'Dormire':'Sleep'}  items={to.sleep}/>}
+                    {to.local_tip  && <div className={s.tipRow}><span>💡</span><span>{to.local_tip}</span></div>}
+                    {to.hidden_gem && <div className={s.gemRow}><span>💎</span><span>{to.hidden_gem}</span></div>}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Practical */}
