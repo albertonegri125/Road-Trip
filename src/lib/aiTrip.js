@@ -4,6 +4,8 @@
 // Documents with official government portal links
 
 import { geocodeCity, generateRealStops } from './routing.js'
+import { db } from './firebase.js'
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 
 // ── Official government portals ──
 const OFFICIAL_PORTALS = {
@@ -182,38 +184,121 @@ function enrichStopFromDB(cityName) {
   return key ? CITY_DB[key] : null
 }
 
-export function enrichStop(stopName, country, vehicle, touristLevel, interests, lang) {
-  const db = enrichStopFromDB(stopName)
+// ── Real content for cities outside the curated CITY_DB ──
+// Previously any city not in the ~26-entry CITY_DB got the exact same canned placeholder
+// ("Centro storico", "Mercato locale", "Cucina tipica locale"...) regardless of which city
+// it actually was — identical text, zero real information, indistinguishable from genuine
+// curated content. That's gone: now it's curated DB -> Firestore cache -> live AI web
+// search -> an honest "not verified yet" state that never pretends to be real content.
+
+function cityCacheKey(city, country) {
+  const key = `${city}_${country || ''}`
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip accents
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return key || 'unknown'
+}
+
+const STOP_CONTENT_SCHEMA = {
+  type: 'object',
+  properties: {
+    vibe:       { type: 'string' },
+    see:        { type: 'array', items: { type: 'string' } },
+    eat:        { type: 'array', items: { type: 'string' } },
+    sleep:      { type: 'array', items: { type: 'string' } },
+    local_tip:  { type: 'string' },
+    hidden_gem: { type: 'string' },
+  },
+  required: ['vibe', 'see', 'eat', 'sleep', 'local_tip', 'hidden_gem'],
+  additionalProperties: false,
+}
+
+// ~12-30s (basic web_search tool, see netlify/functions/ai-trip.js) — real network call,
+// only ever hit once per city thanks to the Firestore cache below.
+async function searchStopContent(city, country, lang) {
+  const isIt = lang !== 'en'
+  const prompt = isIt
+    ? `Cerca informazioni turistiche reali e specifiche su ${city}${country ? `, ${country}` : ''} usando la ricerca web. Rispondi con: una "vibe" in 2-4 parole (es. "Porto asburgico"), 2-3 luoghi/monumenti reali da vedere, 2-3 piatti o locali tipici da mangiare, 1 zona/quartiere dove dormire, un consiglio pratico locale specifico di questa città, e una chicca nascosta poco turistica. Tutto deve essere specifico di ${city} — niente genericità tipo "centro storico" o "mercato locale" se non hanno un nome reale.`
+    : `Search the web for real, specific tourist information about ${city}${country ? `, ${country}` : ''}. Reply with: a "vibe" in 2-4 words, 2-3 real places/landmarks to see, 2-3 typical dishes or venues to eat, 1 neighborhood/area to sleep in, one locally-specific practical tip, and one under-the-radar hidden gem. Everything must be specific to ${city} — no generic "historic center" or "local market" unless they have an actual name.`
+
+  const res = await fetch('/api/ai-trip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, max_tokens: 1500, output_schema: STOP_CONTENT_SCHEMA, enable_web_search: true }),
+  })
+  if (!res.ok) return null
+  const data = await res.json()
+  const textBlock = data.content?.find(b => b.type === 'text')
+  if (!textBlock?.text) return null
+  let parsed
+  try { parsed = JSON.parse(textBlock.text) } catch { return null }
+
+  const sourceUrls = (data.content || [])
+    .filter(b => b.type === 'web_search_tool_result')
+    .flatMap(b => Array.isArray(b.content) ? b.content.map(r => r.url).filter(Boolean) : [])
+
+  return { ...parsed, sourceUrls }
+}
+
+// curated DB (instant) -> Firestore cache (instant after first hit) -> live AI web search
+// (~12-30s, only for a brand-new city) -> honest "unverified" state (never a fake fallback).
+// No staleness/TTL here unlike the planned visaInfo cache — legal/visa rules change and need
+// re-verification, but "what to see/eat" in a city doesn't go stale on a weekly basis, so once
+// found it's cached indefinitely.
+async function getStopContent(city, country, lang) {
+  const curated = enrichStopFromDB(city)
+  if (curated) {
+    return { vibe: curated.vibe, see: curated.see, eat: curated.eat, sleep: curated.sleep, local_tip: curated.tip, hidden_gem: curated.gem, source: 'curated' }
+  }
+
+  const ref = doc(db, 'cityInfo', cityCacheKey(city, country))
+  try {
+    const snap = await getDoc(ref)
+    if (snap.exists()) return { ...snap.data(), source: 'cache' }
+  } catch (err) {
+    if (import.meta.env.DEV) console.warn('cityInfo cache read failed:', err.message)
+  }
+
+  try {
+    const found = await searchStopContent(city, country, lang)
+    if (found) {
+      // Best-effort cache write — never block on it, never let it fail the enrichment.
+      setDoc(ref, { ...found, city, country, lastVerifiedAt: serverTimestamp() })
+        .catch(err => { if (import.meta.env.DEV) console.warn('cityInfo cache write failed:', err.message) })
+      return { ...found, source: 'live' }
+    }
+  } catch (err) {
+    if (import.meta.env.DEV) console.warn('Live city search failed, no verified info available:', err.message)
+  }
+
+  return { vibe: '', see: [], eat: [], sleep: [], local_tip: '', hidden_gem: '', unverified: true, source: 'none' }
+}
+
+export async function enrichStop(stopName, country, vehicle, touristLevel, interests, lang) {
+  const info = await getStopContent(stopName, country, lang)
   // touristLevel steers which angle leads the description: below 40 (fuori dai sentieri
   // battuti) leads with the hidden gem instead of the headline sight.
-  // `interests` is threaded through for a future interest-aware rewrite — matching
-  // free-text see/eat/gem entries against declared interests isn't reliable without either
-  // a tagged POI dataset or a dedicated AI call per stop, both out of scope here.
+  // `interests` is threaded through for a future interest-aware rewrite — matching see/eat/gem
+  // entries against declared interests isn't reliable without either a tagged POI dataset or a
+  // dedicated AI call per stop asking specifically for that interest, both out of scope here.
   const leadWithGem = touristLevel != null && touristLevel < 40
-  if (db) {
-    return Promise.resolve({
-      description: leadWithGem
-        ? `${stopName} — ${db.vibe}. ${db.gem}`
-        : `${stopName} — ${db.vibe}. Una tappa imperdibile del tuo percorso.`,
-      vibe: db.vibe,
-      see:   db.see,
-      eat:   db.eat,
-      sleep: db.sleep,
-      local_tip:  db.tip,
-      hidden_gem: db.gem,
-    })
+
+  if (info.unverified) {
+    return {
+      description: lang === 'it'
+        ? `${stopName}: non abbiamo ancora informazioni verificate su questa tappa — esplora e scopri di persona.`
+        : `${stopName}: we don't have verified information on this stop yet — go explore and find out.`,
+      vibe: 'Scoperta', see: [], eat: [], sleep: [], local_tip: '', hidden_gem: '',
+    }
   }
-  return Promise.resolve({
+  return {
     description: leadWithGem
-      ? `${stopName}: esplora i vicoli fuori dal centro turistico prima di tutto il resto.`
-      : `${stopName} è una tappa del tuo viaggio. Esplora il centro storico e chiedi ai locali i loro posti preferiti.`,
-    vibe: 'Scoperta',
-    see:  ['Centro storico', 'Mercato locale', 'Punto panoramico'],
-    eat:  ['Cucina tipica locale', 'Bar per colazione'],
-    sleep:['B&B o ostello nel centro'],
-    local_tip:  'Chiedi ai locali il loro posto preferito — non è nella guida.',
-    hidden_gem: 'Esplora i vicoli laterali fuori dal centro turistico.',
-  })
+      ? `${stopName} — ${info.vibe}. ${info.hidden_gem}`
+      : `${stopName} — ${info.vibe}. Una tappa imperdibile del tuo percorso.`,
+    vibe: info.vibe, see: info.see, eat: info.eat, sleep: info.sleep,
+    local_tip: info.local_tip, hidden_gem: info.hidden_gem,
+  }
 }
 
 // ── Practical info by countries ──
@@ -261,21 +346,24 @@ export async function generateTripWithAI({ from, to, vehicle, days, season, tour
   // 2. Generate real stops via ORS + Nominatim, selected by interests/touristLevel
   const routeData = await generateRealStops(fCoords, tCoords, from, to, days, vehicle, interests, touristLevel, lang)
 
-  // 3. Enrich each stop with local info
+  // 3. Enrich each stop with real content — curated DB, then Firestore cache, then a live
+  // AI web search for a city we've never seen before (parallelized across stops via
+  // Promise.all, so a cache-miss city adds ~12-30s once, not per stop). Never a fake
+  // generic fallback presented as real content — see getStopContent.
   const enrichedStops = await Promise.all(
     routeData.stops.map(async (stop) => {
-      const info = enrichStopFromDB(stop.city)
+      const info = await getStopContent(stop.city, stop.country, lang)
       return {
         ...stop,
-        vibe:       info?.vibe || 'Scoperta',
-        description: info
-          ? `${stop.city} — ${info.vibe}.`
-          : `${stop.city}: esplora il centro e lasciati sorprendere dalla vita locale.`,
-        see:        info?.see  || ['Centro storico', 'Mercato locale'],
-        eat:        info?.eat  || ['Cucina tipica locale'],
-        sleep:      info?.sleep || ['B&B o albergo in centro'],
-        local_tip:  info?.tip  || 'Chiedi ai locali i loro posti preferiti.',
-        hidden_gem: info?.gem  || 'Esplora i vicoli fuori dal centro turistico.',
+        vibe: info.vibe || 'Scoperta',
+        description: info.unverified
+          ? `${stop.city}: non abbiamo ancora informazioni verificate su questa tappa — esplora e scopri di persona.`
+          : `${stop.city} — ${info.vibe}.`,
+        see:        info.see,
+        eat:        info.eat,
+        sleep:      info.sleep,
+        local_tip:  info.local_tip,
+        hidden_gem: info.hidden_gem,
       }
     })
   )

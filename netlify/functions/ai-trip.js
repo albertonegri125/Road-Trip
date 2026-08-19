@@ -21,7 +21,7 @@ export default async (req, context) => {
 
   try {
     const body = await req.json()
-    const { prompt, system, max_tokens = 4000, output_schema, effort, model = 'claude-opus-5' } = body
+    const { prompt, system, max_tokens = 4000, output_schema, effort, model = 'claude-opus-5', enable_web_search = false } = body
 
     if (!prompt) {
       return new Response(JSON.stringify({ error: 'Missing prompt' }), { status: 400, headers })
@@ -44,6 +44,12 @@ export default async (req, context) => {
     if (effort) output_config.effort = effort
     if (output_schema) output_config.format = { type: 'json_schema', schema: output_schema }
     if (Object.keys(output_config).length) anthropicBody.output_config = output_config
+    // Deliberately the BASIC web search tool (no dynamic filtering / code-execution
+    // wrapping): measured ~29s (Opus 5) vs 120s+ for web_search_20260209 on the same
+    // query — the dynamic variant has Claude write and run Python to filter results,
+    // which is worth it for huge result sets but not for a handful of tourist-info
+    // lookups. Latency matters here because a caller may be waiting on it live.
+    if (enable_web_search) anthropicBody.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }]
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

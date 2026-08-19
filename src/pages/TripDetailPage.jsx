@@ -129,7 +129,7 @@ export default function TripDetailPage() {
                     <div className={s.tlCity}>{stop.city||stop.name}</div>
                     <div className={s.tlMeta}>
                       {stop.country && <span>{stop.country} ·</span>}
-                      <span>{stop.nights||1} {stop.nights>1?(isIt?'notti':'nights'):(isIt?'notte':'night')}</span>
+                      <span>{nightsLabel(stop.nights, isIt)}</span>
                       {stop.vibe && <span className={s.vibeBadge}>{stop.vibe}</span>}
                     </div>
                   </div>
@@ -233,6 +233,15 @@ export default function TripDetailPage() {
       </div>
     </div>
   )
+}
+
+// The starting stop has 0 nights by design (day 1 is the first day of driving, not a
+// night spent before departing) — `?? 1` only covers missing/undefined data (older saved
+// trips, or malformed entries), it never masks a real 0 back to 1 like the old `||1` did.
+function nightsLabel(nights, isIt) {
+  const n = nights ?? 1
+  if (n <= 0) return isIt ? 'Partenza' : 'Departure'
+  return `${n} ${n > 1 ? (isIt ? 'notti' : 'nights') : (isIt ? 'notte' : 'night')}`
 }
 
 function TlRow({ icon, label, items }) {

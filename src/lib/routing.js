@@ -281,11 +281,15 @@ export async function generateRealStops(fromCoords, toCoords, fromName, toName, 
     if (i < allStops.length - 2) await sleep(300)
   }
 
-  // 6. Distribute nights proportionally
+  // 6. Distribute nights proportionally — the starting point isn't slept in before
+  // departing (day 1 is the first real day of driving, not a night "at home"), so it
+  // gets 0 nights and the whole budget is split among the stops that follow it.
   const totalNights = Math.max(numDays - 1, allStops.length - 1)
   allStops.forEach((s, i) => {
-    if (i === allStops.length - 1) {
-      const used = allStops.slice(0, -1).reduce((a, st) => a + (st.nights || 1), 0)
+    if (i === 0) {
+      s.nights = 0
+    } else if (i === allStops.length - 1) {
+      const used = allStops.slice(1, -1).reduce((a, st) => a + (st.nights || 1), 0)
       s.nights = Math.max(1, totalNights - used)
     } else { s.nights = 1 }
   })
