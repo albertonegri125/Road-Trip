@@ -67,6 +67,14 @@
 
 .empty { text-align: center; padding: 60px 20px; color: var(--tx3); display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .empty svg { opacity: .3; }
+.emptyTitle { font-size: 15px; font-weight: 700; color: var(--tx2); }
+.emptySub   { font-size: 13px; max-width: 340px; }
+
+.loaderWrap { display: flex; justify-content: center; padding: 60px; }
+.spin { width: 30px; height: 30px; border: 3px solid var(--border3); border-top-color: var(--fire); border-radius: 50%; animation: spin .75s linear infinite; }
+
+.stopsPreview { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; color: var(--tx2); margin-bottom: 10px; }
+.stopsPreview span:not(:last-child)::after { content: '→'; margin-left: 4px; color: var(--tx3); }
 
 /* Modal */
 .modalBg {
