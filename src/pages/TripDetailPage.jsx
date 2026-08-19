@@ -5,6 +5,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { buildGPX, downloadGPX } from '../lib/routing'
 import { getVehicleDocuments, getHealthRequirements, getOfficialPortal } from '../lib/aiTrip'
+import { fmtDur, nightsLabel } from '../lib/format'
 import {
   ArrowLeft, Download, Printer, Share2, Globe, MapPin,
   Clock, Route, ChevronDown, ChevronUp, ExternalLink,
@@ -126,7 +127,11 @@ export default function TripDetailPage() {
               <div className={s.tlContent}>
                 <div className={s.tlHead}>
                   <div>
-                    <div className={s.tlCity}>{stop.city||stop.name}</div>
+                    <div className={s.tlCity}>
+                      {i === 0 ? (stop.city||stop.name) : `${trip.stops[i-1].city||trip.stops[i-1].name} → ${stop.city||stop.name}`}
+                      {stop.drive_from_prev_km > 0 &&
+                        <span className={s.tlSegInfo}> · {stop.drive_from_prev_km} km · {fmtDur(stop.drive_from_prev_min || 0, lang)}</span>}
+                    </div>
                     <div className={s.tlMeta}>
                       {stop.country && <span>{stop.country} ·</span>}
                       <span>{nightsLabel(stop.nights, isIt)}</span>
@@ -134,7 +139,6 @@ export default function TripDetailPage() {
                     </div>
                   </div>
                   <div className={s.tlRight}>
-                    {stop.drive_from_prev_km > 0 && <span className={s.driveTag}>🚗 {stop.drive_from_prev_km}km</span>}
                     {openIdx===i ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
                   </div>
                 </div>
@@ -235,14 +239,6 @@ export default function TripDetailPage() {
   )
 }
 
-// The starting stop has 0 nights by design (day 1 is the first day of driving, not a
-// night spent before departing) — `?? 1` only covers missing/undefined data (older saved
-// trips, or malformed entries), it never masks a real 0 back to 1 like the old `||1` did.
-function nightsLabel(nights, isIt) {
-  const n = nights ?? 1
-  if (n <= 0) return isIt ? 'Partenza' : 'Departure'
-  return `${n} ${n > 1 ? (isIt ? 'notti' : 'nights') : (isIt ? 'notte' : 'night')}`
-}
 
 function TlRow({ icon, label, items }) {
   return (

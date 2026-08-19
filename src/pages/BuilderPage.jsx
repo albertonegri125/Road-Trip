@@ -5,6 +5,7 @@ import { collection, addDoc, setDoc, serverTimestamp, doc, updateDoc, increment 
 import { db } from '../lib/firebase'
 import { calculateRoute, buildGPX, downloadGPX, attachSegmentDistances } from '../lib/routing'
 import { generateTripWithAI, enrichStop, getVehicleDocuments, getHealthRequirements, getOfficialPortal } from '../lib/aiTrip'
+import { fmtDur, nightsLabel } from '../lib/format'
 import GeoInput from '../components/ui/GeoInput'
 import {
   MapPin, Plus, Trash2, GripVertical, Download, Printer,
@@ -690,16 +691,4 @@ export default function BuilderPage() {
 
 function Spin({ white }) {
   return <div style={{ width:13, height:13, border:`2px solid ${white?'rgba(255,255,255,.3)':'var(--border3)'}`, borderTopColor:white?'#fff':'var(--fire)', borderRadius:'50%', animation:'spin .7s linear infinite', flexShrink:0 }}/>
-}
-function fmtDur(min, lang) {
-  const h = Math.floor(min/60), m = min%60
-  return h > 0 ? `${h}h ${m}${lang==='it'?'min':'m'}` : `${m}${lang==='it'?'min':'m'}`
-}
-// The starting stop has 0 nights by design (day 1 is the first day of driving, not a
-// night spent before departing) — `?? 1` only covers missing/undefined data, never masks
-// a real 0.
-function nightsLabel(nights, isIt) {
-  const n = nights ?? 1
-  if (n <= 0) return isIt ? 'Partenza' : 'Departure'
-  return `${n} ${n > 1 ? (isIt ? 'notti' : 'nights') : (isIt ? 'notte' : 'night')}`
 }
