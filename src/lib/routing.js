@@ -44,11 +44,15 @@ async function reverseGeocode(lat, lng) {
     const data = await res.json()
     const a  = data.address || {}
     const et = data.extratags || {}
+    // city/town/municipality only — a.village and a.county are deliberately never used
+    // as a fallback: a village is too small to be a real stop, and a county is a
+    // province, not a city. An empty city here means "no real city at this point",
+    // handled by extractRealCitiesFromRoute skipping the candidate entirely.
     return {
-      city: a.city || a.town || a.village || a.municipality || a.county || data.name || '',
+      city: a.city || a.town || a.municipality || data.name || '',
       country: a.country || '',
       countryCode: a.country_code?.toUpperCase() || '',
-      placeType: a.city ? 'city' : a.town ? 'town' : a.village ? 'village' : a.municipality ? 'municipality' : '',
+      placeType: a.city ? 'city' : a.town ? 'town' : a.municipality ? 'municipality' : '',
       population: et.population ? (parseInt(et.population, 10) || null) : null,
       // Nominatim's own 0..1 relevance/notability score — a rough "how well-known is this place" proxy
       importance: typeof data.importance === 'number' ? data.importance : null,
@@ -129,14 +133,17 @@ export async function extractRealCitiesFromRoute(geometry, numCities = 5) {
     const idx  = Math.min(i * step, usable.length - 1)
     const [lng, lat] = usable[idx]
     const geo  = await reverseGeocode(lat, lng)
-    if (geo.city && !seen.has(geo.city.toLowerCase())) {
-      seen.add(geo.city.toLowerCase())
-      results.push({
-        city: geo.city, country: geo.country, countryCode: geo.countryCode, lat, lng,
-        placeType: geo.placeType, population: geo.population, importance: geo.importance,
-      })
-    }
     await sleep(1100)
+    // city empty = this point only resolved to a village/hamlet/county (see
+    // reverseGeocode), not a real city/town — skip it rather than let a tiny place
+    // through as a "stop". Fewer, real intermediate cities beat more fake ones.
+    if (!geo.city) continue
+    if (seen.has(geo.city.toLowerCase())) continue
+    seen.add(geo.city.toLowerCase())
+    results.push({
+      city: geo.city, country: geo.country, countryCode: geo.countryCode, lat, lng,
+      placeType: geo.placeType, population: geo.population, importance: geo.importance,
+    })
   }
   return results
 }
